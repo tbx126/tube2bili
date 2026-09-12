@@ -127,7 +127,7 @@ def transcribe(task, settings, folder, duration):
                     record(task['id'], route, minutes=min(part_seconds, duration - offset) / 60)
                     segments = value['segments']
                     detected_language = str(value.get('language') or '')
-                    if not segments or any(not {'start', 'end', 'text'} <= x.keys() for x in segments):
+                    if (not segments and not value.get('no_speech')) or any(not {'start', 'end', 'text'} <= x.keys() for x in segments):
                         raise ValueError()
                     cached.write_text(json.dumps({'segments': segments, 'language': detected_language}, ensure_ascii=False), 'utf-8')
                     break
@@ -159,6 +159,8 @@ def transcribe(task, settings, folder, duration):
         for seg in segments:
             all_cues.append(srt.Subtitle(len(all_cues) + 1,
                 dt.timedelta(seconds=offset + float(seg['start'])), dt.timedelta(seconds=offset + float(seg['end'])), str(seg['text']).strip()))
+    if not all_cues:
+        raise Waiting('全片未识别到可转写的人声，无法生成真实双语字幕。请提供字幕或改用有旁白的视频验证字幕流程。')
     (folder / 'en.srt').write_text(srt.compose(all_cues), 'utf-8')
 
 

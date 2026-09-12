@@ -127,3 +127,47 @@ def test_direct_audio_segments_keep_offsets(client, monkeypatch):
     cues = language.load_cues(folder / 'en.srt')
     assert [cue.start.total_seconds() for cue in cues] == [0, 300, 600]
     assert json.loads((folder / 'asr-layout.json').read_text())['part_seconds'] == 300
+
+
+def test_no_words_response_is_not_a_transport_failure(monkeypatch, tmp_path):
+    audio = tmp_path / 'audio.mp3'
+    audio.write_bytes(b'audio')
+    original = httpx.Client
+    def handler(request):
+        return httpx.Response(200, headers={'content-type': 'text/event-stream'},
+            text='event:error\ndata:{"code":"CLIENT_ERROR","message":"ASR_RESPONSE_HAVE_NO_WORDS"}\n\n')
+    monkeypatch.setattr(httpx, 'Client', lambda **kwargs: original(transport=httpx.MockTransport(handler)))
+    route = config.Route(protocol='qwen_audio', model='qwen-audio-3.0-asr-flash', base_url='https://qwen.test/api/v1')
+    assert qwen.transcribe_audio(None, route, audio) == {'language': '', 'segments': [], 'no_speech': True}
+
+
+def test_silent_part_keeps_later_speech_offset(client, monkeypatch):
+    task_id = client.post('/api/tasks', json={'url': 'https://youtu.be/abcdefghijk'}).json()['id']
+    folder = store.DATA / 'media' / task_id
+    folder.mkdir()
+    settings = config.Settings()
+    settings.transcription.primary = config.Route(protocol='qwen_audio', base_url='https://qwen.test/api/v1', model='qwen-audio-3.0-asr-flash')
+    monkeypatch.setattr(language, 'run', lambda *args: None)
+    calls = []
+    def recognize(_, route, audio):
+        calls.append(audio.name)
+        return {'language': '', 'segments': [], 'no_speech': True} if audio.name == 'audio-0.mp3' else {
+            'language': 'en', 'segments': [{'start': 1, 'end': 2, 'text': 'Hello'}]}
+    monkeypatch.setattr(qwen, 'transcribe_audio', recognize)
+    language.transcribe(store.task(task_id), settings, folder, 305)
+    assert language.load_cues(folder / 'en.srt')[0].start.total_seconds() == 301
+    language.transcribe(store.task(task_id), settings, folder, 305)
+    assert calls == ['audio-0.mp3', 'audio-1.mp3']
+
+
+def test_all_silent_audio_pauses_without_invented_captions(client, monkeypatch):
+    task_id = client.post('/api/tasks', json={'url': 'https://youtu.be/abcdefghijk'}).json()['id']
+    folder = store.DATA / 'media' / task_id
+    folder.mkdir()
+    (folder / 'asr-layout.json').write_text('{"part_seconds":300}')
+    (folder / 'asr-0.json').write_text('{"segments":[],"language":""}')
+    settings = config.Settings()
+    settings.transcription.primary = config.Route(base_url='https://qwen.test/api/v1', model='qwen-audio-3.0-asr-flash', protocol='qwen_audio')
+    with pytest.raises(language.Waiting, match='全片未识别'):
+        language.transcribe(store.task(task_id), settings, folder, 5)
+    assert not (folder / 'en.srt').exists()

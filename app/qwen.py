@@ -76,7 +76,12 @@ def transcribe_audio(task_id, route, audio):
         raise Waiting('音频编码后超过千问直传 10 MB 限制')
     check(task_id)
     sentences = {}
+    no_speech = False
     def consume(value):
+        nonlocal no_speech
+        if value.get('code') == 'CLIENT_ERROR' and value.get('message') == 'ASR_RESPONSE_HAVE_NO_WORDS':
+            no_speech = True
+            return
         if value.get('code'):
             raise ValueError('Qwen audio returned an error')
         sentence = value['output'].get('sentence')
@@ -103,6 +108,8 @@ def transcribe_audio(task_id, route, audio):
             else:
                 response.read()
                 consume(response.json())
+    if no_speech and not sentences:
+        return {'language': '', 'segments': [], 'no_speech': True}
     return parse_transcript({'transcripts': [{'channel_id': 0,
         'sentences': sorted(sentences.values(), key=lambda s: s['begin_time'])}]})
 

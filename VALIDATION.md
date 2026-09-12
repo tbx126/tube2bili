@@ -10,7 +10,9 @@
 - 已在 NAS 页面验证预设保存、音频接口类型及模型显示。Bilibili QR 真实生成与轮询成功，页面显示等待扫码；尚未完成用户扫码。
 - YouTube 19 秒公开视频 `jNQXAC9IVRw` 的模拟提取返回标题和时长；使用应用完整下载命令时触发 “Sign in to confirm you're not a bot”，因此**真实下载未通过**。诊断文件位于 NAS 数据目录 `diagnostics/youtube-download`，没有创建发布任务。
 - 本机 Edge 的三个配置目录通过 yt-dlp 导出 Cookie 均失败，原因是 Cookie 数据库无法复制；等待用户关闭浏览器或导入 Netscape 文件。
-- 模型 API Key、Bilibili 完整登录、YouTube Cookie、Telegram Token/Chat ID 和用户目标视频尚缺。真实翻译、ASR、B 站投稿、播放器字幕、通知送达仍未通过验收。
+- 后续联调：用户已填入两项模型 Key、Bilibili 完整凭据和 Telegram 配置。翻译真实返回中文；NAS 生成的 5.148 秒音频通过 Qwen ASR，返回英文与 0.32–5.053 秒时间轴；Telegram 测试通知标记已发送；biliup list 凭据验证退出码 0。
+- 用户指定视频 `8ZddqWvCXgg`（1598 秒）的真实下载及合并已成功，无需 Cookie。本机关闭 Edge 后仍遇到 DPAPI 解密失败，尚未导入 YouTube Cookie。
+- 该视频第一个 5 分钟片段返回 ASR_RESPONSE_HAVE_NO_WORDS，已在 rc.4 增加无语音片段处理及测试，待继续识别后续片段。真实 B 站投稿及播放器字幕仍未完成。
 
 以下是首版历史记录，不能视为当前外部联调结果。
 
