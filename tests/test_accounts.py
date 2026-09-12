@@ -11,7 +11,8 @@ def test_qr_login_saves_server_side_without_returning_secrets(client, monkeypatc
         assert auth_code == 'qr-secret'
         return {'code': 0, 'data': {'cookie_info': {'cookies': [
             {'name': 'SESSDATA', 'value': 'encoded%2Fsecret'}, {'name': 'bili_jct', 'value': 'csrf'},
-            {'name': 'DedeUserID', 'value': '123'}]}, 'token_info': {'access_token': 'private-token'}, 'sso': []}}
+            {'name': 'DedeUserID', 'value': '123'}]}, 'token_info': {'access_token': 'private-token',
+            'refresh_token': 'private-refresh', 'expires_in': 3600, 'mid': 123}, 'sso': []}}
     monkeypatch.setattr(accounts, 'tv_request', request)
     created = client.post('/api/accounts/bilibili/qr').json()
     assert created['image'].startswith('data:image/png;base64,')
@@ -30,4 +31,13 @@ def test_expired_qr_and_invalid_login_do_not_write(client, monkeypatch):
     monkeypatch.setattr(accounts, 'tv_request', lambda *args, **kwargs: {'code': 0, 'data': {}})
     accounts.SESSIONS['invalid'] = {'expires': __import__('time').time() + 60, 'key': 'key'}
     assert client.post('/api/accounts/bilibili/qr/invalid').status_code == 502
+    assert not (store.DATA / 'cookies.json').exists()
+
+
+def test_cookie_only_import_is_rejected_before_publication(client):
+    value = {'cookie_info': {'cookies': [
+        {'name': 'SESSDATA', 'value': 'cookie'}, {'name': 'bili_jct', 'value': 'csrf'},
+        {'name': 'DedeUserID', 'value': '123'}]}}
+    response = client.put('/api/credentials/bilibili', json={'content': json.dumps(value)})
+    assert response.status_code == 422
     assert not (store.DATA / 'cookies.json').exists()

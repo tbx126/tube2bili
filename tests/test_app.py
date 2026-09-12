@@ -155,7 +155,8 @@ def test_deletion_keeps_task_and_dedupe(client):
 
 def test_credentials_not_public_or_arbitrary_files(client):
     task_id = new_task(client)
-    value={'cookie_info':{'cookies':[{'name':name,'value':'SECRET'} for name in ('SESSDATA','bili_jct','DedeUserID')]}}
+    value={'cookie_info':{'cookies':[{'name':name,'value':'123' if name=='DedeUserID' else 'SECRET'} for name in ('SESSDATA','bili_jct','DedeUserID')]},
+           'sso':[], 'token_info': {'access_token':'SECRET','refresh_token':'SECRET','expires_in':3600,'mid':123}}
     assert client.put('/api/credentials/bilibili',json={'content':json.dumps(value)}).status_code == 200
     assert client.get('/api/settings').json()['bilibili_configured']
     assert 'SECRET' not in client.get('/api/settings').text

@@ -19,6 +19,25 @@ SESSIONS = {}
 HEADERS = {'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.bilibili.com/'}
 
 
+def validate_login(value):
+    """Validate the complete LoginInfo consumed by biliup, not just web cookies."""
+    jar = {cookie['name']: cookie['value'] for cookie in value['cookie_info']['cookies']}
+    if not all(isinstance(jar.get(k), str) and jar[k] for k in ('SESSDATA', 'bili_jct', 'DedeUserID')):
+        raise ValueError('Incomplete cookies')
+    if not jar['DedeUserID'].isdigit():
+        raise ValueError('Invalid account ID')
+    token = value['token_info']
+    if not all(isinstance(token.get(k), str) and token[k] for k in ('access_token', 'refresh_token')):
+        raise ValueError('Incomplete uploader token')
+    if not isinstance(token.get('mid'), int) or token['mid'] != int(jar['DedeUserID']):
+        raise ValueError('Token and cookie accounts differ')
+    if not isinstance(token.get('expires_in'), int) or token['expires_in'] < 0:
+        raise ValueError('Invalid token expiry')
+    if not isinstance(value.get('sso'), list) or not all(isinstance(s, str) for s in value['sso']):
+        raise ValueError('Incomplete LoginInfo')
+    return jar
+
+
 def tv_request(action, auth_code=None):
     # Public BiliTV application identifiers used by biliup's QR login protocol.
     fields = {'appkey': '4409e2ce8ffd12b8', 'local_id': '0', 'ts': int(time.time())}
@@ -76,12 +95,7 @@ def poll(session_id):
         if code != 0:
             raise HTTPException(502, 'B 站登录未成功，请重新生成二维码')
         login = value['data']
-        jar = {cookie['name']: cookie['value'] for cookie in login['cookie_info']['cookies']}
-        required = ('SESSDATA', 'bili_jct', 'DedeUserID')
-        if not all(jar.get(key) for key in required):
-            raise HTTPException(502, '登录响应缺少必要 Cookie，请重新登录')
-        if not login.get('token_info', {}).get('access_token'):
-            raise HTTPException(502, '登录响应缺少上传所需 Token，请重新登录')
+        validate_login(login)
         login['platform'] = 'BiliTV'
         save(store.DATA / 'cookies.json', login)
         state['done'] = True

@@ -13,7 +13,7 @@
 
 新加坡可将域名替换为 `dashscope-intl.aliyuncs.com`，必须使用新加坡地域 Key。也支持控制台提供的工作空间专属域名，保留对应路径。不要使用千问聊天网页地址或 Coding Plan 的端点。
 
-费用字段填写控制台人民币单价；0 表示未计价，不能实现有效预算限制。长上下文、思考模式及地域定价可能不同，统计是估算，不代表账单。备用服务只有明确开启时才调用。
+北京地域参考价：qwen-plus 非思考输入 0.8 元/百万 token、输出 2 元/百万 token；qwen-audio-3.0-asr-flash 为 0.00022 元/秒，折算填写 0.0132 元/分钟。费用字段以控制台人民币单价为准；0 表示未计价，不能实现有效预算限制。长上下文、思考模式及地域定价可能不同，统计是估算，不代表账单。备用服务只有明确开启时才调用。
 
 文本请求使用 `/chat/completions`，显式 `enable_thinking: false` 和 JSON object 输出。普通 OpenAI 路由不附加千问参数。保存后可以单独测试主服务或备用服务；测试会发起少量付费 token 调用并记入统计，不创建或发布视频。
 
@@ -33,6 +33,7 @@ YouTube 继续使用 Netscape cookies.txt 导入。凭据只保存在忽略版�
 
 ## 依据
 
+- [官方模型计费](https://help.aliyun.com/zh/model-studio/model-pricing)
 - [千问接口地域和基础地址](https://help.aliyun.com/en/model-studio/base-url)
 - [千问 OpenAI 兼容 Chat](https://help.aliyun.com/en/model-studio/compatibility-of-openai-with-dashscope)
 - [Qwen Audio 3.0 Base64、SSE 与时间轴](https://help.aliyun.com/zh/model-studio/fun-asr-flash-recorded-speech-recognition-http-api)

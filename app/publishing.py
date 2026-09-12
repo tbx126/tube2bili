@@ -13,10 +13,11 @@ def cookies():
     if not path.exists():
         raise Waiting('请先在设置中导入 biliup cookies.json 或在容器内扫码登录')
     value = json.loads(path.read_text('utf-8'))
-    jar = {entry['name']: entry['value'] for entry in value.get('cookie_info', {}).get('cookies', [])}
-    if not jar.get('SESSDATA') or not jar.get('bili_jct'):
-        raise Waiting('B 站登录文件缺少 SESSDATA 或 bili_jct')
-    return jar
+    from .accounts import validate_login
+    try:
+        return validate_login(value)
+    except (ValueError, KeyError, TypeError):
+        raise Waiting('B 站登录文件缺少完整上传凭据，请在设置页重新扫码登录')
 
 
 def publish(task, settings, folder):

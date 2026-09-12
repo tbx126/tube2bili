@@ -324,11 +324,9 @@ def credential_file(provider: str, value: Credentials):
     if provider == 'bilibili':
         try:
             data = json.loads(value.content)
-            jar = {x['name']: x['value'] for x in data['cookie_info']['cookies']}
-            if not all(jar.get(k) for k in ('SESSDATA', 'bili_jct', 'DedeUserID')):
-                raise ValueError()
+            accounts.validate_login(data)
         except (ValueError, KeyError, TypeError):
-            raise HTTPException(422, '需要 biliup 导出的 cookies.json，包含完整登录 Cookie')
+            raise HTTPException(422, '需要 biliup 导出的完整 cookies.json（Cookie、token_info、sso）；仅网页 Cookie 无法用于当前上传工具。也可直接扫码登录。')
         path = store.DATA / 'cookies.json'
     elif provider == 'youtube':
         if 'Netscape HTTP Cookie File' not in value.content[:200]:
