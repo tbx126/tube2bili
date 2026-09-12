@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark"><title>Tube2Bili · 视频工作台</title>
+  <link rel="stylesheet" href="/static/style.css"><script src="/static/app.js" defer></script>
+</head>
+<body>
+  <div id="login" class="login-wrap" hidden>
+    <form id="login-form" class="login-card">
+      <div class="brand-mark">tb</div><p class="eyebrow">YOUR PERSONAL VIDEO PIPELINE</p>
+      <h1>让内容跨越语言。</h1><p class="muted">登录 Tube2Bili，管理你的双语视频工作流。</p>
+      <label>工作台密码<input name="password" type="password" autocomplete="current-password" required></label>
+      <p id="login-error" class="error" role="alert"></p><button class="primary" type="submit">进入工作台 <span aria-hidden="true">→</span></button>
+      <small>密码在 NAS 的 .env 文件中配置。</small>
+    </form>
+  </div>
+  <div id="shell" hidden>
+    <aside>
+      <a class="brand" href="#overview"><span class="brand-mark">tb</span><strong>Tube2Bili<span>视频工作台</span></strong></a>
+      <div class="workspace"><span class="avatar">P</span><div>个人工作空间<small>NAS · 单账号</small></div><span class="live-dot"></span></div>
+      <p class="nav-label">工作空间</p>
+      <nav aria-label="主导航">
+        <a href="#overview" data-page="overview"><span aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>总览</a>
+        <a href="#tasks" data-page="tasks"><span aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 5h12M9 12h12M9 19h12M3 5h2M3 12h2M3 19h2"/></svg></span>任务队列<span id="queue-count" class="nav-count">0</span></a>
+        <a href="#channels" data-page="channels"><span aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M6 6a8.5 8.5 0 0 0 0 12M18 6a8.5 8.5 0 0 1 0 12M3 3a13 13 0 0 0 0 18M21 3a13 13 0 0 1 0 18"/></svg></span>频道订阅</a>
+        <a href="#settings" data-page="settings"><span aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="currentColor"/><circle cx="16" cy="17" r="3" fill="currentColor"/></svg></span>服务设置</a>
+      </nav>
+      <div class="sidebar-bottom"><div class="small-label">存储策略</div><strong>内容长期留存</strong><p>原视频与字幕保存在 NAS<br>仅在手动删除时清理</p><button data-action="logout" class="ghost">退出登录</button></div>
+    </aside>
+    <div class="main-shell"><header><div class="breadcrumb">工作空间 <span>/</span> <strong id="breadcrumb">总览</strong></div><div class="header-right"><span id="connection" class="connection">正在连接</span><span class="avatar">P</span></div></header>
+      <main id="main" tabindex="-1"></main><footer>Tube2Bili <span>原声保留 · 双语字幕 · 自动转载</span></footer>
+    </div>
+  </div>
+  <dialog id="modal"><div class="modal-head"><h2 id="modal-title"></h2><button class="ghost" data-action="close" aria-label="关闭对话框">✕</button></div><div id="modal-body"></div></dialog>
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+</body></html>

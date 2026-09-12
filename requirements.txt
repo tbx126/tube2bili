@@ -1,0 +1,9 @@
+fastapi==0.141.1
+uvicorn==0.52.4
+httpx==0.28.1
+pydantic-settings==2.15.0
+python-multipart==0.0.32
+srt==3.5.3
+yt-dlp[default]==2026.8.19
+biliup==1.2.4
+bilibili-api-python==17.4.2
