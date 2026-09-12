@@ -17,5 +17,6 @@
 - 新增 Dashboard、密码登录、任务控制、频道管理、配置和 Telegram 通知。
 - 新增 Docker Compose 部署、长期文件存储和手动清理。
 - 包含 28 项自动测试和桌面/移动页面验收记录。
+- GitHub Actions 已通过 Linux 测试、Docker 镜像构建和容器启动健康检查。
 
-已知验证边界：目标 NAS 上的 Docker 构建与真实 YouTube、API、B 站和 Telegram 联调仍待完成。详见 VALIDATION.md。
+已知验证边界：目标 NAS 部署与真实 YouTube、API、B 站和 Telegram 联调仍待完成。详见 VALIDATION.md。
