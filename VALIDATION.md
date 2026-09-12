@@ -1,4 +1,20 @@
-# 本地验收记录
+# 验收记录
+
+## 0.2.0 候选版本联调（2026-09-12）
+
+- 本地 38 项测试通过，覆盖 Qwen JSON 参数、文件上传/轮询恢复、短音频 JSON 和 SSE 最终句子、5 分钟分段偏移、完整上传凭据检查。JS 语法检查通过。
+- rc.2 的 GitHub Actions 测试与 Docker 构建/健康检查均通过：[记录](https://github.com/tbx126/tube2bili/actions/runs/34686497999)。rc.3 增加上传凭据校验，需查看 PR 最新检查。
+- NAS 已运行候选镜像，服务地址 `http://192.168.5.6:18080`，数据绑定 `/vol2/1000/media/tube2bili`。独立 release 目录与旧 Compose 文件保留，可回滚。
+- rc.3 NAS `/healthz` 返回 200；不完整凭据导入返回 422，符合预期。
+- NAS 已保存千问翻译 `qwen-plus` 和音频直传 `qwen-audio-3.0-asr-flash` 配置；北京参考单价分别为 0.8/2 元每百万输入/输出 token、0.0132 元每音频分钟。
+- 已在 NAS 页面验证预设保存、音频接口类型及模型显示。Bilibili QR 真实生成与轮询成功，页面显示等待扫码；尚未完成用户扫码。
+- YouTube 19 秒公开视频 `jNQXAC9IVRw` 的模拟提取返回标题和时长；使用应用完整下载命令时触发 “Sign in to confirm you're not a bot”，因此**真实下载未通过**。诊断文件位于 NAS 数据目录 `diagnostics/youtube-download`，没有创建发布任务。
+- 本机 Edge 的三个配置目录通过 yt-dlp 导出 Cookie 均失败，原因是 Cookie 数据库无法复制；等待用户关闭浏览器或导入 Netscape 文件。
+- 模型 API Key、Bilibili 完整登录、YouTube Cookie、Telegram Token/Chat ID 和用户目标视频尚缺。真实翻译、ASR、B 站投稿、播放器字幕、通知送达仍未通过验收。
+
+以下是首版历史记录，不能视为当前外部联调结果。
+
+## 0.1.0 本地记录
 
 日期：2026-09-12。
 
