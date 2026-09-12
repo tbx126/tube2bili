@@ -9,6 +9,7 @@ import shutil
 import sys
 import time
 import uuid
+import httpx
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -19,8 +20,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 
-from . import config, store, worker
-from .media import youtube_url
+from . import accounts, config, store, worker
+from .media import Waiting, youtube_url
 
 load_dotenv()
 ROOT = Path(__file__).resolve().parent
@@ -297,6 +298,23 @@ def update_settings(value: dict):
     return {'ok': True}
 
 
+@app.post('/api/routes/translation/{slot}/test')
+def translation_test(slot: str):
+    from .language import chat
+    if slot not in ('primary', 'fallback'):
+        raise HTTPException(404)
+    settings = config.get()
+    route = getattr(settings.translation, slot)
+    settings.translation = config.Routing(primary=route)
+    try:
+        result = chat(None, settings, 'Translate the text into Simplified Chinese. Return {"text":"translation"}.', {'text': 'Hello, world.'})
+        if not isinstance(result.get('text'), str) or not result['text'].strip():
+            raise ValueError()
+        return {'ok': True, 'text': result['text'][:200]}
+    except (Waiting, RuntimeError, ValueError):
+        raise HTTPException(422, '翻译测试失败，请检查 API Key、模型权限、地址和余额')
+
+
 class Credentials(BaseModel):
     content: str = Field(max_length=2_000_000)
 
@@ -332,6 +350,30 @@ def notification_test():
         raise HTTPException(422, '请先保存 Telegram 配置')
     store.notice('Tube2Bili：Telegram 测试通知')
     return {'ok': True}
+
+
+@app.post('/api/accounts/bilibili/qr')
+def bilibili_qr():
+    try:
+        return accounts.create()
+    except (httpx.HTTPError, ValueError, KeyError):
+        raise HTTPException(502, '无法生成 B 站二维码，请检查网络后重试')
+
+
+@app.post('/api/accounts/bilibili/qr/{session_id}')
+def bilibili_qr_poll(session_id: str):
+    try:
+        return accounts.poll(session_id)
+    except (httpx.HTTPError, ValueError, KeyError):
+        raise HTTPException(502, 'B 站登录查询失败，请稍后重试')
+
+
+@app.post('/api/accounts/bilibili/check')
+def bilibili_check():
+    try:
+        return accounts.status()
+    except (httpx.HTTPError, ValueError, KeyError, Waiting):
+        raise HTTPException(422, 'B 站凭证缺失、失效或网络不可用，请重新登录')
 
 
 app.mount('/static', StaticFiles(directory=ROOT / 'static'), name='static')

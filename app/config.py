@@ -12,6 +12,7 @@ LOCK = threading.RLock()
 
 class Route(BaseModel):
     name: str = '主服务'
+    protocol: Literal['openai', 'qwen', 'qwen_asr'] = 'openai'
     base_url: str = ''
     api_key: str = ''
     model: str = ''

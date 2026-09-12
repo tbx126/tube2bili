@@ -101,6 +101,8 @@ python -m pytest -q
 
 ## 参考
 
+千问接口、配置示例、候选版验证范围见 [千问接入说明](docs/QWEN.md)。
+
 - [yt-dlp 项目文档](https://github.com/yt-dlp/yt-dlp)
 - [biliup 项目和 CLI](https://github.com/biliup/biliup)
 - [bilibili-api-python 社区库](https://github.com/Nemo2011/bilibili-api)

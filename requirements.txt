@@ -7,3 +7,4 @@ srt==3.5.3
 yt-dlp[default]==2026.8.19
 biliup==1.2.4
 bilibili-api-python==17.4.2
+qrcode[pil]==8.2
