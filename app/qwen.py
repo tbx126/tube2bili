@@ -1,5 +1,6 @@
 """DashScope recording ASR, with private upload and resumable remote jobs."""
 import hashlib
+import base64
 import json
 import os
 import time
@@ -64,6 +65,46 @@ def parse_transcript(value):
     return {'language': 'en' if languages == {'en'} else '', 'segments': [
         {'start': float(s['begin_time']) / 1000, 'end': float(s['end_time']) / 1000,
          'text': s['text']} for s in sentences]}
+
+
+def transcribe_audio(task_id, route, audio):
+    """Qwen Audio 3.0 accepts Base64 directly; final SSE sentences carry timing."""
+    if route.model != 'qwen-audio-3.0-asr-flash' and not route.model.startswith('qwen-audio-3.0-asr-flash-20'):
+        raise Waiting('千问音频直传请选择 qwen-audio-3.0-asr-flash 或其日期快照')
+    encoded = base64.b64encode(audio.read_bytes()).decode()
+    if len(encoded) > 10_000_000:
+        raise Waiting('音频编码后超过千问直传 10 MB 限制')
+    check(task_id)
+    sentences = {}
+    def consume(value):
+        if value.get('code'):
+            raise ValueError('Qwen audio returned an error')
+        sentence = value['output'].get('sentence')
+        if sentence and sentence.get('sentence_end') is True:
+            sentences[sentence['sentence_id']] = sentence
+    with httpx.Client(timeout=180) as client:
+        with client.stream('POST', api_base(route.base_url) + '/services/aigc/multimodal-generation/generation',
+            headers={'Authorization': 'Bearer ' + route.api_key, 'X-DashScope-SSE': 'enable'},
+            json={'model': route.model, 'input': {'messages': [{'role': 'user', 'content': [
+                {'type': 'input_audio', 'input_audio': {'data': 'data:audio/mpeg;base64,' + encoded}}]}]},
+                  'parameters': {'format': 'mp3', 'sample_rate': '16000'}}) as response:
+            response.raise_for_status()
+            if 'text/event-stream' in response.headers.get('content-type', ''):
+                data = []
+                for line in response.iter_lines():
+                    check(task_id)
+                    if line.startswith('data:'):
+                        data.append(line[5:].lstrip())
+                    elif not line and data:
+                        consume(json.loads('\n'.join(data)))
+                        data = []
+                if data:
+                    consume(json.loads('\n'.join(data)))
+            else:
+                response.read()
+                consume(response.json())
+    return parse_transcript({'transcripts': [{'channel_id': 0,
+        'sentences': sorted(sentences.values(), key=lambda s: s['begin_time'])}]})
 
 
 def transcribe(task_id, route, audio):

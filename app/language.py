@@ -85,11 +85,20 @@ def transcribe(task, settings, folder, duration):
     available = routes(settings.transcription)
     if not duration or duration <= 0:
         raise Waiting('无法确定视频时长，不能进行语音识别')
+    manifest = folder / 'asr-layout.json'
+    if manifest.exists():
+        part_seconds = json.loads(manifest.read_text('utf-8'))['part_seconds']
+    else:
+        # Existing checkpoints from v0.1 always use 600-second offsets.
+        part_seconds = 600 if list(folder.glob('asr-[0-9]*.json')) else (300 if any(r.protocol == 'qwen_audio' for r in available) else 600)
+        qwen.save(manifest, {'part_seconds': part_seconds})
+    if part_seconds not in (300, 600):
+        raise Waiting('语音分段检查点无效')
     all_cues = []
-    for part in range(math.ceil(duration / 600)):
+    for part in range(math.ceil(duration / part_seconds)):
         check(task['id'])
         cached = folder / f'asr-{part}.json'
-        offset = part * 600
+        offset = part * part_seconds
         if cached.exists():
             cached_value = json.loads(cached.read_text('utf-8'))
             segments = cached_value['segments']
@@ -97,12 +106,16 @@ def transcribe(task, settings, folder, duration):
         else:
             budget(settings)
             audio = folder / f'audio-{part}.mp3'
-            run(['ffmpeg', '-y', '-ss', str(offset), '-i', 'source.mp4', '-t', '600', '-vn', '-ac', '1', '-ar', '16000', '-b:a', '48k', str(audio)], folder, task['id'])
+            run(['ffmpeg', '-y', '-ss', str(offset), '-i', 'source.mp4', '-t', str(part_seconds), '-vn', '-ac', '1', '-ar', '16000', '-b:a', '48k', str(audio)], folder, task['id'])
             segments = None
             for route in available:
                 check(task['id'])
                 try:
-                    if route.protocol == 'qwen_asr':
+                    if route.protocol == 'qwen_audio':
+                        if min(part_seconds, duration - offset) > 300:
+                            raise Waiting('当前任务已有 10 分钟分段，请保留原语音路由；新任务会使用 5 分钟直传分段')
+                        value = qwen.transcribe_audio(task['id'], route, audio)
+                    elif route.protocol == 'qwen_asr':
                         value = qwen.transcribe(task['id'], route, audio)
                     else:
                         with httpx.Client(timeout=600) as client, audio.open('rb') as handle:
@@ -111,7 +124,7 @@ def transcribe(task, settings, folder, duration):
                                 data={'model': route.model, 'response_format': 'verbose_json', 'timestamp_granularities[]': 'segment'})
                             response.raise_for_status()
                             value = response.json()
-                    record(task['id'], route, minutes=min(600, duration - offset) / 60)
+                    record(task['id'], route, minutes=min(part_seconds, duration - offset) / 60)
                     segments = value['segments']
                     detected_language = str(value.get('language') or '')
                     if not segments or any(not {'start', 'end', 'text'} <= x.keys() for x in segments):
@@ -124,7 +137,7 @@ def transcribe(task, settings, folder, duration):
                 raise RuntimeError('语音识别失败：服务必须支持带分段时间轴的 verbose_json')
         for segment in segments:
             start, end = float(segment['start']), float(segment['end'])
-            if not (math.isfinite(start) and math.isfinite(end) and 0 <= start < end <= min(600, duration - offset) + 2):
+            if not (math.isfinite(start) and math.isfinite(end) and 0 <= start < end <= min(part_seconds, duration - offset) + 2):
                 raise Waiting('语音识别返回了无效时间轴，已暂停处理')
         if detected_language.lower() not in ('en', 'english'):
             # Never force English recognition on non-English audio. Translate detected text first.

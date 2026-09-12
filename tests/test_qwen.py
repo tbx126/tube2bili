@@ -86,3 +86,44 @@ def test_qwen_mixed_languages_are_not_labelled_english():
 def test_wrong_qwen_asr_model_stops_before_http(tmp_path):
     with pytest.raises(language.Waiting, match='filetrans'):
         qwen.transcribe(None, config.Route(model='qwen3-asr-flash'), tmp_path / 'audio.mp3')
+
+
+@pytest.mark.parametrize('streaming', [True, False])
+def test_audio_direct_upload_uses_final_timestamps(tmp_path, monkeypatch, streaming):
+    audio = tmp_path / 'audio.mp3'
+    audio.write_bytes(b'test-audio')
+    route = config.Route(protocol='qwen_audio', base_url='https://qwen.test/api/v1', model='qwen-audio-3.0-asr-flash')
+    sentence = {'sentence_id': 1, 'sentence_end': True, 'begin_time': 500, 'end_time': 2100, 'text': 'Hello'}
+    def handler(request):
+        assert request.url.path.endswith('/services/aigc/multimodal-generation/generation')
+        body = json.loads(request.content)
+        assert body['input']['messages'][0]['content'][0]['input_audio']['data'].startswith('data:audio/mpeg;base64,')
+        assert body['parameters']['format'] == 'mp3'
+        if streaming:
+            events = [{'output': {'sentence': {**sentence, 'sentence_end': False, 'text': 'partial'}}},
+                      {'output': {'sentence': sentence}}]
+            return httpx.Response(200, headers={'content-type': 'text/event-stream'},
+                text=''.join('event:result\ndata:' + json.dumps(e) + '\n\n' for e in events))
+        return httpx.Response(200, json={'output': {'sentence': sentence}})
+    original = httpx.Client
+    monkeypatch.setattr(httpx, 'Client', lambda **kwargs: original(transport=httpx.MockTransport(handler)))
+    result = qwen.transcribe_audio(None, route, audio)
+    assert result['segments'] == [{'start': .5, 'end': 2.1, 'text': 'Hello'}]
+
+
+def test_direct_audio_segments_keep_offsets(client, monkeypatch):
+    task_id = client.post('/api/tasks', json={'url': 'https://youtu.be/abcdefghijk'}).json()['id']
+    folder = store.DATA / 'media' / task_id
+    folder.mkdir()
+    settings = config.Settings()
+    settings.transcription.primary = config.Route(protocol='qwen_audio', base_url='https://qwen.test/api/v1', model='qwen-audio-3.0-asr-flash')
+    cuts = []
+    def cut(args, *unused):
+        cuts.append((args[args.index('-ss') + 1], args[args.index('-t') + 1]))
+    monkeypatch.setattr(language, 'run', cut)
+    monkeypatch.setattr(qwen, 'transcribe_audio', lambda *args: {'language': 'en', 'segments': [{'start': 0, 'end': 1, 'text': 'Hello'}]})
+    language.transcribe(store.task(task_id), settings, folder, 601)
+    assert cuts == [('0', '300'), ('300', '300'), ('600', '300')]
+    cues = language.load_cues(folder / 'en.srt')
+    assert [cue.start.total_seconds() for cue in cues] == [0, 300, 600]
+    assert json.loads((folder / 'asr-layout.json').read_text())['part_seconds'] == 300
