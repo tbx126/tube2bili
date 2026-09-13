@@ -23,6 +23,65 @@ class Reconcile(Exception):
     pass
 
 
+class YouTubeError(RuntimeError):
+    def __init__(self, kind):
+        self.kind = kind
+        super().__init__({'bot': 'YouTube 要求验证请求，可能与代理出口或会话有关，不能据此判定 Cookie 失效',
+            'auth': '此视频需要有效登录或访问权限，请检查 YouTube Cookie 与账号权限',
+            'rate': 'YouTube 请求限流，稍后自动重试，请保持代理出口稳定',
+            'token': 'YouTube 令牌或媒体请求被拒绝，请检查 PO Token 服务及代理出口',
+            'network': 'YouTube 网络请求失败，请检查代理与网络连接',
+            'other': 'YouTube 下载失败，请检查视频可用性及工具日志'}[kind])
+
+
+def youtube_error_kind(text):
+    low = text.casefold()
+    errors = '\n'.join(line for line in low.splitlines() if 'error' in line)
+    if any(x in errors for x in ('429', 'too many requests', "this content isn't available, try again later")):
+        return 'rate'
+    if 'not a bot' in errors:
+        return 'bot'
+    if any(x in errors for x in ('sign in', 'members-only', 'private video', 'confirm your age', 'cookies are no longer valid')):
+        return 'auth'
+    if any(x in errors for x in ('po token', 'po_token', '403')):
+        return 'token'
+    if any(x in errors for x in ('timed out', 'connection', 'resolve', 'proxy', 'network')):
+        return 'network'
+    return 'other'
+
+
+YOUTUBE_AUTH_MARKERS = (
+    'sign in to confirm',
+    'use --cookies-from-browser',
+    'use --cookies for the authentication',
+    'confirm you\u2019re not a bot',
+    "confirm you're not a bot",
+)
+
+
+def youtube_cookie_path():
+    return store.DATA / 'youtube-cookies.txt'
+
+
+def is_youtube_auth_error(output):
+    """Match explicit yt-dlp YouTube auth failures without false positives."""
+    lowered = output.casefold()
+    return any(marker in lowered for marker in YOUTUBE_AUTH_MARKERS)
+
+
+def youtube_auth_waiting():
+    if youtube_cookie_path().is_file():
+        return Waiting('YouTube 登录或请求验证未通过，请检查 Cookie、账号权限和代理出口；不能仅据此判定 Cookie 失效')
+    return Waiting('尚未配置 YouTube 登录 Cookie，请在「服务设置 → YouTube」导入 Netscape 格式 cookies.txt')
+
+
+def is_netscape_cookie_file(content):
+    """Validate the strict header used by browser cookie exports."""
+    content = content.lstrip('\ufeff')
+    first = next((line.strip() for line in content.splitlines() if line.strip()), '')
+    return first in ('# HTTP Cookie File', '# Netscape HTTP Cookie File')
+
+
 def youtube_url(value, channel=False):
     parsed = urlparse(value.strip())
     if parsed.scheme != 'https' or parsed.username or parsed.password or parsed.port not in (None, 443):
@@ -86,32 +145,36 @@ def run(args, cwd, task_id=None, timeout=7200, stop_event=None):
     text = path.read_text('utf-8', errors='replace')
     if process.returncode:
         # Tool logs can contain credential-bearing URLs. Never expose them in API/log events.
-        if any(marker in text.lower() for marker in ('sign in', 'login', 'cookies', '登录')):
-            raise Waiting('下载或投稿需要更新登录凭证，请检查账号设置')
+        if 'yt_dlp' in args:
+            raise YouTubeError(youtube_error_kind(text))
         raise RuntimeError(f'外部工具执行失败（退出码 {process.returncode}），请检查连接和配置')
     return text
 
 
 def ytdlp(settings):
-    args = [sys.executable, '-m', 'yt_dlp', '--no-warnings', '--socket-timeout', '30', '--retries', '3', '--js-runtimes', 'node']
+    args = [sys.executable, '-m', 'yt_dlp', '--no-warnings', '--socket-timeout', '30', '--retries', '3', '--js-runtimes', 'node',
+            '--sleep-requests', '1', '--sleep-interval', str(settings.youtube_sleep_seconds),
+            '--max-sleep-interval', str(settings.youtube_sleep_seconds + 5)]
     if settings.proxy:
         args += ['--proxy', settings.proxy]
-    cookie = store.DATA / 'youtube-cookies.txt'
-    if cookie.exists():
-        args += ['--cookies', str(cookie)]
+    provider = os.environ.get('POT_PROVIDER_URL', '')
+    if provider:
+        args += ['--extractor-args', 'youtubepot-bgutilhttp:base_url=' + provider,
+                 '--extractor-args', 'youtube:player_client=mweb']
     return args
 
 
 def download(task, settings, folder):
     if (folder / 'source.json').exists():
         return json.loads((folder / 'source.json').read_text('utf-8'))
-    args = ytdlp(settings) + [
+    args = [
         '--no-playlist', '--write-info-json', '--write-thumbnail', '--convert-thumbnails', 'jpg',
         '--write-subs', '--write-auto-subs', '--sub-langs', 'en,en-US,en-GB,en-orig',
         '--sub-format', 'srt/best', '--convert-subs', 'srt', '--merge-output-format', 'mp4',
         '-f', 'bv*[height<=1080][ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/bv*[height<=1080]+ba/b',
         '--remux-video', 'mp4', '-o', 'source.%(ext)s', task['url']]
-    run(args, folder, task['id'])
+    from .youtube import execute
+    execute(settings, args, folder, task['id'])
     info = json.loads((folder / 'source.info.json').read_text('utf-8'))
     if not (folder / 'source.mp4').exists():
         raise RuntimeError('下载完成但未找到 MP4')

@@ -9,7 +9,8 @@ import httpx
 
 from . import config, store
 from .language import translate
-from .media import Reconcile, Stopped, Waiting, check, download, run, ytdlp
+from .media import Reconcile, Stopped, Waiting, YouTubeError, check, download, run, ytdlp
+from .youtube import LoginRequired, execute as youtube_execute, login_notice
 
 STOP = threading.Event()
 ACTIVE = set()
@@ -35,7 +36,7 @@ def process(task_id):
             task = store.task(task_id)
             stage = task['stage']
             store.event(task_id, {'download': '下载视频与原字幕', 'translate': '生成双语字幕与投稿文案',
-                'publish': '上传并提交转载稿件', 'subtitles': '提交 B 站播放器字幕', 'verify': '检查播放器字幕可见状态'}[stage])
+                'publish': '上传并提交转载稿件', 'subtitles': '提交 B 站播放器字幕', 'verify': '检查播放器字幕可见状态', 'collection': '加入 B 站合集'}[stage])
             payload = task['payload']
             if stage == 'download':
                 source = download(task, settings, folder)
@@ -52,6 +53,10 @@ def process(task_id):
                 store.update(task_id, stage='verify', progress=95, attempts=0)
             elif stage == 'verify':
                 verify(task, settings)
+                store.update(task_id, stage='collection', progress=98, attempts=0)
+            elif stage == 'collection':
+                from .collections import add
+                add(task, settings, folder)
                 check(task_id)
                 store.update(task_id, status='completed', progress=100, error='')
                 store.event(task_id, '视频与双语播放器字幕已确认可访问')
@@ -65,7 +70,28 @@ def process(task_id):
     except Waiting as exc:
         if store.task(task_id)['status'] not in ('paused', 'cancelled'):
             store.update(task_id, status='waiting', error=str(exc))
-            store.notice(f'任务等待处理：{store.task(task_id)["title"]}\n{exc}')
+            if isinstance(exc, LoginRequired):
+                payload = store.task(task_id)['payload']
+                payload['youtube_login_required'] = True
+                store.update(task_id, payload=payload)
+                login_notice()
+            else:
+                store.notice(f'任务等待处理：{store.task(task_id)["title"]}\n{exc}')
+    except YouTubeError as exc:
+        task = store.task(task_id)
+        if task['status'] not in ('paused', 'cancelled'):
+            attempts = task['attempts'] + 1
+            limit = 6 if exc.kind == 'rate' else 3
+            status = 'retrying' if attempts < limit else ('waiting' if exc.kind == 'bot' else 'failed')
+            payload = task['payload']
+            payload['youtube_login_required'] = status == 'waiting'
+            store.update(task_id, payload=payload, status=status, attempts=attempts, error=str(exc),
+                         next_run=time.time() + min(3600, 300 * 2**(attempts - 1)))
+            store.event(task_id, str(exc))
+            if status == 'waiting':
+                login_notice()
+            elif status == 'failed':
+                store.notice(f'YouTube 任务失败：{task["title"]}\n{exc}')
     except Exception as exc:
         LOG.warning('Task %s stopped with %s', task_id, type(exc).__name__)
         task = store.task(task_id)
@@ -95,7 +121,7 @@ def worker_loop():
         try:
             with store.connect() as db:
                 db.execute('BEGIN IMMEDIATE')
-                task = db.execute("SELECT id FROM tasks WHERE status IN ('queued','retrying') AND next_run<=? ORDER BY created LIMIT 1", (time.time(),)).fetchone()
+                task = db.execute("SELECT id FROM tasks WHERE deleted=0 AND status IN ('queued','retrying') AND next_run<=? ORDER BY created LIMIT 1", (time.time(),)).fetchone()
                 if task:
                     db.execute("UPDATE tasks SET status='running',updated=? WHERE id=?", (time.time(), task['id']))
             if task:
@@ -134,13 +160,25 @@ def poll_channels():
         folder = store.DATA / 'poll' / channel['id']
         folder.mkdir(parents=True, exist_ok=True)
         try:
-            output = run(ytdlp(settings) + ['--flat-playlist', '--dump-single-json', '--skip-download', channel['url']], folder, timeout=900, stop_event=STOP)
+            output = youtube_execute(settings, ['--flat-playlist', '--dump-single-json', '--skip-download', channel['url']], folder, timeout=900, stop_event=STOP)
             value = json.loads(output)
             if not isinstance(value.get('entries'), list):
                 raise ValueError()
             ingest(channel, value['entries'])
         except Stopped:
             return
+        except Waiting as exc:
+            message = str(exc)
+            if isinstance(exc, LoginRequired):
+                login_notice()
+            elif not channel['error']:
+                store.notice(f'{channel["name"]}：{message}')
+            store.execute('UPDATE channels SET error=?,last_poll=? WHERE id=?', (message, time.time(), channel['id']))
+        except YouTubeError as exc:
+            message = str(exc)
+            if not channel['error']:
+                store.notice(f'{channel["name"]}：{message}')
+            store.execute('UPDATE channels SET error=?,last_poll=? WHERE id=?', (message, time.time(), channel['id']))
         except Exception:
             message = '频道检查失败，请检查代理、频道地址或 YouTube Cookie'
             if not channel['error']:

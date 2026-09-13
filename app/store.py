@@ -44,7 +44,9 @@ def init():
           id INTEGER PRIMARY KEY AUTOINCREMENT, created REAL, message TEXT,
           sent INTEGER DEFAULT 0, attempts INTEGER DEFAULT 0, next_run REAL DEFAULT 0);
         ''')
-        db.execute("UPDATE tasks SET status='queued' WHERE status='running'")
+        if 'deleted' not in {row['name'] for row in db.execute('PRAGMA table_info(tasks)')}:
+            db.execute('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0')
+        db.execute("UPDATE tasks SET status='queued' WHERE status='running' AND deleted=0")
 
 
 def rows(sql, args=()):

@@ -1,10 +1,23 @@
 services:
+  pot-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:2.0.0
+    restart: unless-stopped
+    init: true
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
   app:
+    depends_on:
+      - pot-provider
     build: .
     restart: unless-stopped
     ports:
       - "${BIND_ADDRESS:-0.0.0.0}:${PORT:-8080}:8080"
     environment:
+      POT_PROVIDER_URL: http://pot-provider:4416
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:?请在 .env 中设置至少12位密码}
       DATA_DIR: /data
       COOKIE_SECURE: ${COOKIE_SECURE:-0}
