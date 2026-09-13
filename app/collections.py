@@ -30,7 +30,7 @@ def owned(client):
     result = []
     for page in range(1, 101):
         data = request(client, 'GET', 'seasons', params={'pn': page, 'ps': 30})
-        items = data.get('seasons', [])
+        items = data.get('seasons') or []
         result.extend(items)
         if len(result) >= data.get('total', 0) or not items:
             return result
@@ -41,7 +41,7 @@ def list_collections():
     with client_for(cookies()) as client:
         return [{'id': item['season']['id'], 'title': item['season']['title'],
                  'sections': [{'id': s['id'], 'title': s['title']}
-                              for s in item.get('sections', {}).get('sections', [])]}
+                              for s in (item.get('sections') or {}).get('sections') or []]}
                 for item in owned(client)]
 
 
@@ -64,7 +64,7 @@ def add(task, settings, folder):
         collection = next((i for i in owned(client) if i['season']['id'] == season_id), None)
         if collection is None:
             raise Waiting('当前账号找不到目标合集，请在 B 站创作中心检查合集及权限')
-        sections = collection.get('sections', {}).get('sections', [])
+        sections = (collection.get('sections') or {}).get('sections') or []
         if not section_id and len(sections) == 1:
             section_id = sections[0]['id']
         if section_id not in {s['id'] for s in sections}:
@@ -81,9 +81,9 @@ def add(task, settings, folder):
 
         def contains():
             data = request(client, 'GET', 'season/section', params={'id': section_id})
-            if not isinstance(data.get('episodes'), list):
+            if 'episodes' not in data or (data['episodes'] is not None and not isinstance(data['episodes'], list)):
                 raise Waiting('合集小节响应格式变化，无法安全确认是否已加入')
-            return any(str(e.get('aid')) == str(aid) for e in data['episodes'])
+            return any(str(e.get('aid')) == str(aid) for e in data['episodes'] or [])
 
         if not contains():
             check(task['id'])

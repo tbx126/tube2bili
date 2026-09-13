@@ -110,3 +110,12 @@ def test_completed_task_can_join_without_restarting_upload(client):
     assert updated['status'] == 'queued'
     store.update(task['id'], status='running')
     assert client.put(f'/api/tasks/{task["id"]}/collection', json={'season_id': 13}).status_code == 409
+
+
+def test_account_with_no_collections_returns_empty_list(client, monkeypatch):
+    monkeypatch.setattr(collections, 'cookies', lambda: {})
+    monkeypatch.setattr(collections, 'client_for', lambda jar: httpx.Client(transport=httpx.MockTransport(
+        lambda req: httpx.Response(200, json={'code': 0, 'data': {'seasons': None, 'total': 0}}))))
+    response = client.get('/api/bilibili/collections')
+    assert response.status_code == 200
+    assert response.json() == []
