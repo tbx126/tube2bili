@@ -107,3 +107,39 @@ def test_non_english_asr_is_translated_and_cached(client, monkeypatch):
     language.transcribe(store.task(task_id),settings,folder,2)
     assert len(calls)==1
     assert 'Hello' in (folder/'en.srt').read_text('utf-8')
+
+
+def test_merged_translation_splits_and_preserves_checkpoints(client, monkeypatch, tmp_path):
+    task_id = task(client)
+    calls = []
+    def reply(*args):
+        ids = args[-1]['required_ids']
+        calls.append(ids)
+        if len(ids) > 2:
+            return {'lines': [{'id': 1, 'text': 'merged'}]}
+        return {'lines': [{'id': str(i), 'text': f'translation {i}'} for i in reversed(ids)]}
+    monkeypatch.setattr(language, 'chat', reply)
+    source = [{'id': i, 'text': 'fragment'} for i in range(41, 45)]
+    path = tmp_path / 'translation.json'
+    result = language.subtitle_lines(task_id, config.get(), path, source, 'Chinese')
+    assert [x['id'] for x in result['lines']] == [41, 42, 43, 44]
+    assert calls == [[41, 42, 43, 44], [41, 42], [43, 44]]
+    path.unlink()
+    language.subtitle_lines(task_id, config.get(), path, source, 'Chinese')
+    assert len(calls) == 4  # Successful child batches are reused.
+
+
+@pytest.mark.parametrize('lines', [
+    [{'id': 1, 'text': 'a'}, {'id': 1, 'text': 'b'}],
+    [{'id': 1, 'text': ''}, {'id': 2, 'text': 'b'}],
+    [{'id': True, 'text': 'a'}, {'id': 2, 'text': 'b'}],
+    [None, None],
+])
+def test_bad_mapping_never_cached(client, monkeypatch, tmp_path, lines):
+    task_id = task(client)
+    monkeypatch.setattr(language, 'chat', lambda *args: {'lines': lines})
+    path = tmp_path / 'translation.json'
+    with pytest.raises(Waiting):
+        language.subtitle_lines(task_id, config.get(), path,
+            [{'id': 1, 'text': 'a'}, {'id': 2, 'text': 'b'}], 'Chinese')
+    assert not path.exists()

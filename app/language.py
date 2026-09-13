@@ -81,6 +81,50 @@ def chat(task_id, settings, instruction, content):
     raise RuntimeError('翻译服务请求失败或返回了无效 JSON；请检查路由、余额和模型')
 
 
+def subtitle_lines(task_id, settings, checkpoint, source_lines, target, title=''):
+    """Validate the entire mapping; never reuse a partially renumbered response."""
+    check(task_id)
+    expected = [line['id'] for line in source_lines]
+    if checkpoint.exists():
+        value = json.loads(checkpoint.read_text('utf-8'))
+    else:
+        value = chat(task_id, settings,
+            f'Translate each timed subtitle fragment into {target}. If already in the target language, preserve it. '
+            'Each input ID belongs to a fixed time interval. Return exactly one nonempty translation for EACH ID, '
+            'including incomplete sentence fragments. Never combine fragments, move meaning between IDs, omit entries, '
+            'or renumber IDs. Use surrounding fragments only as context. '
+            'Return JSON {"lines":[{"id":<original integer ID>,"text":"translation"}]}.',
+            {'title': title, 'required_ids': expected, 'lines': source_lines})
+    lines = value.get('lines') if isinstance(value, dict) else None
+    valid = isinstance(lines, list) and len(lines) == len(expected)
+    mapped = {}
+    if valid:
+        for line in lines:
+            if not isinstance(line, dict):
+                valid = False
+                break
+            key = line.get('id')
+            if isinstance(key, str) and re.fullmatch(r'0|[1-9][0-9]*', key):
+                key = int(key)
+            if type(key) is not int or key not in expected or key in mapped or not isinstance(line.get('text'), str) or not line['text'].strip():
+                valid = False
+                break
+            mapped[key] = {'id': key, 'text': line['text'].strip()}
+    if valid:
+        result = {'lines': [mapped[key] for key in expected]}
+    else:
+        store.event(task_id, f'字幕翻译结构不匹配：ID {expected[0]}–{expected[-1]}，期望 {len(expected)} 条，返回 {len(lines) if isinstance(lines, list) else 0} 条；拆分重试')
+        if len(source_lines) == 1:
+            raise Waiting(f'字幕 ID {expected[0]} 翻译结果仍无效，已暂停；恢复任务可重试')
+        middle = len(source_lines) // 2
+        result = {'lines': []}
+        for suffix, subset in (('left', source_lines[:middle]), ('right', source_lines[middle:])):
+            child = checkpoint.with_name(checkpoint.stem + '-' + suffix + '.json')
+            result['lines'].extend(subtitle_lines(task_id, settings, child, subset, target, title)['lines'])
+    qwen.save(checkpoint, result)
+    return result
+
+
 def transcribe(task, settings, folder, duration):
     available = routes(settings.transcription)
     if not duration or duration <= 0:
@@ -144,12 +188,8 @@ def transcribe(task, settings, folder, duration):
             for chunk in range(0, len(segments), 40):
                 english_path = folder / f'asr-english-{part}-{chunk}.json'
                 batch = segments[chunk:chunk + 40]
-                if english_path.exists():
-                    english = json.loads(english_path.read_text('utf-8'))
-                else:
-                    english = chat(task['id'], settings,
-                        'Translate each subtitle into English. If already English, preserve it. Keep all IDs. Return {"lines":[{"id":0,"text":"English"}]}.',
-                        {'lines': [{'id': i, 'text': seg['text']} for i, seg in enumerate(batch)]})
+                english = subtitle_lines(task['id'], settings, english_path,
+                    [{'id': i, 'text': seg['text']} for i, seg in enumerate(batch)], 'English')
                 lines = english.get('lines', [])
                 if len(lines) != len(batch) or [line.get('id') for line in lines] != list(range(len(batch))) or any(not isinstance(line.get('text'), str) or not line['text'].strip() for line in lines):
                     raise Waiting('英文字幕翻译结果无效，已暂停处理')
@@ -179,12 +219,8 @@ def translate(task, settings, folder, source):
         check(task['id'])
         batch = cues[offset:offset + 40]
         checkpoint = folder / f'translation-{offset}.json'
-        if checkpoint.exists():
-            value = json.loads(checkpoint.read_text('utf-8'))
-        else:
-            value = chat(task['id'], settings,
-                'Translate English subtitles into concise natural Simplified Chinese. Preserve every ID and meaning. Output {"lines":[{"id":1,"text":"中文"}]}. Do not merge or omit cues.',
-                {'title': source['title'], 'lines': [{'id': c.index, 'text': c.content} for c in batch]})
+        value = subtitle_lines(task['id'], settings, checkpoint,
+            [{'id': c.index, 'text': c.content} for c in batch], 'concise natural Simplified Chinese', source['title'])
         lines = value.get('lines', [])
         if len(lines) != len(batch) or [x.get('id') for x in lines] != [c.index for c in batch] or any(not isinstance(x.get('text'), str) or not x['text'].strip() for x in lines):
             raise Waiting('翻译字幕数量或编号不匹配，已停止投稿')
