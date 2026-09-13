@@ -141,6 +141,11 @@ def poll_channels():
             ingest(channel, value['entries'])
         except Stopped:
             return
+        except Waiting as exc:
+            message = str(exc)
+            if not channel['error']:
+                store.notice(f'{channel["name"]}：{message}')
+            store.execute('UPDATE channels SET error=?,last_poll=? WHERE id=?', (message, time.time(), channel['id']))
         except Exception:
             message = '频道检查失败，请检查代理、频道地址或 YouTube Cookie'
             if not channel['error']:

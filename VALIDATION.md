@@ -1,5 +1,12 @@
 # 验收记录
 
+## 0.2.0-rc.18 YouTube 凭证错误处理（2026-09-13）
+
+- NAS 任务 `NXog9AnlTIA` 下载日志确认是 YouTube `Sign in to confirm you’re not a bot`，且 `/data/youtube-cookies.txt` 缺失；根因是 YouTube 登录凭证未配置，不是 Bilibili 投稿凭证。
+- `run()` 现在只匹配明确的 yt-dlp YouTube 登录提示；缺失 Cookie 和已有但失效的 Cookie 返回不同的等待文案。频道轮询不再覆盖该文案。
+- Cookie 导入严格接受两种 Netscape 标准首行，并拒绝 JSON 或任意普通文本；新增单元测试覆盖误判和两种首行格式。
+- 本地 59 项测试与 JavaScript 语法检查通过；待用户导入新的 `youtube-cookies.txt` 后再继续原任务下载验证。
+
 ## 0.2.0-rc.17 记录卡片布局重构（2026-09-13）
 
 - 任务列表由以往平面分隔线升级为独立悬浮操作卡片，卡片间距 12px，具备平滑悬停微浮起动效（`translateY(-1px)`）与发光边框。

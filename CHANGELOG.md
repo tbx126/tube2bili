@@ -6,6 +6,13 @@
 
 暂无。
 
+## [0.2.0-rc.18] - 2026-09-13
+
+- 修正 YouTube 下载错误分类：仅匹配 yt-dlp 明确的登录 / 反机器人提示，不再因普通日志中的 `cookies` 字样误判为凭证失效。
+- 区分未配置 Cookie 与 Cookie 已失效两种等待状态，并让频道轮询复用可操作的设置提示。
+- 严格校验导入文件的 Netscape Cookie 首行，兼容 `# HTTP Cookie File` 与 `# Netscape HTTP Cookie File`。
+- 在部署文档中补充 Edge InPrivate / Chrome 无痕窗口导出 YouTube Cookie 的流程。
+
 ## [0.2.0-rc.17] - 2026-09-13
 
 - 重点优化任务记录卡片布局：采用独立卡片容器与间距，消除以往大表格连续切分线的单调感。

@@ -23,6 +23,38 @@ class Reconcile(Exception):
     pass
 
 
+YOUTUBE_AUTH_MARKERS = (
+    'sign in to confirm',
+    'use --cookies-from-browser',
+    'use --cookies for the authentication',
+    'confirm you\u2019re not a bot',
+    "confirm you're not a bot",
+)
+
+
+def youtube_cookie_path():
+    return store.DATA / 'youtube-cookies.txt'
+
+
+def is_youtube_auth_error(output):
+    """Match explicit yt-dlp YouTube auth failures without false positives."""
+    lowered = output.casefold()
+    return any(marker in lowered for marker in YOUTUBE_AUTH_MARKERS)
+
+
+def youtube_auth_waiting():
+    if youtube_cookie_path().is_file():
+        return Waiting('YouTube 登录 Cookie 已失效或被轮换，请重新导出并在「服务设置 → YouTube」导入 cookies.txt')
+    return Waiting('尚未配置 YouTube 登录 Cookie，请在「服务设置 → YouTube」导入 Netscape 格式 cookies.txt')
+
+
+def is_netscape_cookie_file(content):
+    """Validate the strict header used by browser cookie exports."""
+    content = content.lstrip('\ufeff')
+    first = next((line.strip() for line in content.splitlines() if line.strip()), '')
+    return first in ('# HTTP Cookie File', '# Netscape HTTP Cookie File')
+
+
 def youtube_url(value, channel=False):
     parsed = urlparse(value.strip())
     if parsed.scheme != 'https' or parsed.username or parsed.password or parsed.port not in (None, 443):
@@ -86,8 +118,8 @@ def run(args, cwd, task_id=None, timeout=7200, stop_event=None):
     text = path.read_text('utf-8', errors='replace')
     if process.returncode:
         # Tool logs can contain credential-bearing URLs. Never expose them in API/log events.
-        if any(marker in text.lower() for marker in ('sign in', 'login', 'cookies', '登录')):
-            raise Waiting('下载或投稿需要更新登录凭证，请检查账号设置')
+        if is_youtube_auth_error(text):
+            raise youtube_auth_waiting()
         raise RuntimeError(f'外部工具执行失败（退出码 {process.returncode}），请检查连接和配置')
     return text
 
@@ -96,7 +128,7 @@ def ytdlp(settings):
     args = [sys.executable, '-m', 'yt_dlp', '--no-warnings', '--socket-timeout', '30', '--retries', '3', '--js-runtimes', 'node']
     if settings.proxy:
         args += ['--proxy', settings.proxy]
-    cookie = store.DATA / 'youtube-cookies.txt'
+    cookie = youtube_cookie_path()
     if cookie.exists():
         args += ['--cookies', str(cookie)]
     return args

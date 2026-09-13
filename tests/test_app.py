@@ -8,7 +8,7 @@ import srt
 from app import config, store, worker, publishing
 from app.bili_bridge import subtitle_data
 from app.language import load_cues, budget
-from app.media import Waiting, Reconcile, youtube_url
+from app.media import Waiting, Reconcile, is_netscape_cookie_file, is_youtube_auth_error, youtube_auth_waiting, youtube_url
 
 
 VIDEO = 'https://www.youtube.com/watch?v=abcdefghijk'
@@ -29,6 +29,23 @@ def test_normalize_video(url):
 def test_reject_non_youtube(url):
     with pytest.raises(ValueError):
         youtube_url(url)
+
+
+def test_youtube_auth_detection_is_specific(tmp_path, monkeypatch):
+    assert is_youtube_auth_error("Sign in to confirm you're not a bot. Use --cookies for the authentication.")
+    assert not is_youtube_auth_error('WARNING: cookies were not found in the metadata')
+    monkeypatch.setattr(store, 'DATA', tmp_path)
+    with pytest.raises(Waiting, match='尚未配置 YouTube 登录 Cookie'):
+        raise youtube_auth_waiting()
+    (tmp_path / 'youtube-cookies.txt').write_text('# Netscape HTTP Cookie File\n', 'utf-8')
+    with pytest.raises(Waiting, match='已失效或被轮换'):
+        raise youtube_auth_waiting()
+
+
+@pytest.mark.parametrize('header', ['# HTTP Cookie File', '# Netscape HTTP Cookie File'])
+def test_netscape_cookie_header(header):
+    assert is_netscape_cookie_file('\ufeff' + header + '\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tvalue\n')
+    assert not is_netscape_cookie_file('{"cookies": []}')
 
 
 def test_auth_csrf_and_logout(client):

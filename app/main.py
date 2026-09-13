@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 
 from . import accounts, config, store, worker
-from .media import Waiting, youtube_url
+from .media import Waiting, is_netscape_cookie_file, youtube_url
 
 load_dotenv()
 ROOT = Path(__file__).resolve().parent
@@ -351,7 +351,7 @@ def credential_file(provider: str, value: Credentials):
             raise HTTPException(422, '需要 biliup 导出的完整 cookies.json（Cookie、token_info、sso）；仅网页 Cookie 无法用于当前上传工具。也可直接扫码登录。')
         path = store.DATA / 'cookies.json'
     elif provider == 'youtube':
-        if 'Netscape HTTP Cookie File' not in value.content[:200]:
+        if not is_netscape_cookie_file(value.content):
             raise HTTPException(422, '需要 Netscape 格式的 cookies.txt')
         path = store.DATA / 'youtube-cookies.txt'
     else:

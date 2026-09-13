@@ -46,6 +46,8 @@
    ```
 
    按终端提示完成扫码登录。也可以在 Dashboard 导入已有的 biliup `cookies.json`。YouTube 如需登录，导入 Netscape 格式 `cookies.txt`。本项目不读取电脑现有浏览器登录数据。
+
+   YouTube Cookie 建议在 Edge InPrivate / Chrome 无痕窗口中完成：登录 YouTube，在同一标签页打开 `https://www.youtube.com/robots.txt`，使用 Cookie 导出扩展只导出 `youtube.com`，导出后立即关闭无痕窗口，再从 Dashboard 的「服务设置 → YouTube」导入。不要把 Cookie 文件提交到 Git 或发送给他人。
 8. 点击 Telegram 测试通知，然后添加频道或手动视频链接。首次真实验证建议使用你指定的一条可转载视频；创建任务即授权系统自动投稿。
 
 Docker 镜像安装 Node 22、ffmpeg、yt-dlp 与 biliup。构建需要访问 Debian 包源和 PyPI；NAS 的浏览器代理不一定等同于 Docker 构建代理，请在 NAS Docker 配置中设置可用的镜像/网络。
