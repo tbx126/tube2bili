@@ -164,10 +164,11 @@ def delete_task(task_id: str):
     # Keep the deduplication/publication receipt and media. Serialize with scheduler.
     with worker.ACTIVE_LOCK, store.connect() as db:
         db.execute('BEGIN IMMEDIATE')
-        task = db.execute('SELECT status FROM tasks WHERE id=?', (task_id,)).fetchone()
+        task = db.execute('SELECT status,payload FROM tasks WHERE id=?', (task_id,)).fetchone()
         if not task:
             raise HTTPException(404, '任务不存在')
-        if task_id in worker.ACTIVE or task['status'] in ('running', 'reconcile'):
+        payload = json.loads(task['payload'])
+        if task_id in worker.ACTIVE or task['status'] in ('running', 'reconcile') or (payload.get('publication_started') and not payload.get('bvid')):
             raise HTTPException(409, '任务正在执行或投稿结果待核对，请先暂停并等待停止，或核对投稿')
         db.execute("UPDATE tasks SET deleted=1, status=CASE WHEN status='completed' THEN status ELSE 'cancelled' END, updated=? WHERE id=?", (time.time(), task_id))
     store.event(task_id, '用户删除队列记录；保留本地文件、费用和投稿去重信息')

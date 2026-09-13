@@ -175,6 +175,12 @@ def test_queue_record_delete_rejects_active_and_reconcile(client):
     assert client.delete(f'/api/tasks/{task_id}').status_code == 409
 
 
+def test_queue_record_delete_rejects_unknown_publication(client):
+    task_id = new_task(client)
+    store.update(task_id, status='queued', stage='publish', payload={'publication_started': True})
+    assert client.delete(f'/api/tasks/{task_id}').status_code == 409
+
+
 def test_credentials_not_public_or_arbitrary_files(client):
     task_id = new_task(client)
     value={'cookie_info':{'cookies':[{'name':name,'value':'123' if name=='DedeUserID' else 'SECRET'} for name in ('SESSDATA','bili_jct','DedeUserID')]},
