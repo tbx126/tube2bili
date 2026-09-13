@@ -30,7 +30,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Bilingual,Noto Sans CJK SC,44,&H004FD5FF,&H004FD5FF,&H00101010,&H80000000,-1,0,0,0,100,100,0,0,1,2.5,1,2,100,100,54,1
+Style: Bilingual,Microsoft YaHei,44,&H004FD5FF,&H004FD5FF,&H00101010,&H80000000,-1,0,0,0,100,100,0,0,1,2.5,1,2,100,100,54,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
