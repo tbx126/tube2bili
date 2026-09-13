@@ -66,6 +66,10 @@ def test_login_notice_deduplicated(client):
     assert len(store.rows('SELECT * FROM notices')) == 1
 
 
+def test_session_cookies_without_expiry_are_accepted(client):
+    assert youtube.import_cookie(COOKIE.replace('2000000000', '0')) == 0
+
+
 @pytest.mark.parametrize('text,kind', [
     ("ERROR: Sign in to confirm you're not a bot. Use --cookies", 'bot'),
     ('WARNING: cookies are no longer valid\nERROR: HTTP Error 429', 'rate'),

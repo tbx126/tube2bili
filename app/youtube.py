@@ -74,7 +74,8 @@ def import_cookie(content):
             os.chmod(tmp, 0o600)
             jar = http.cookiejar.MozillaCookieJar(str(tmp))
             jar.load(ignore_discard=True, ignore_expires=True)
-            if not any(c.domain.lstrip('.') == 'youtube.com' and not c.is_expired() for c in jar):
+            if not any((c.domain.lstrip('.') == 'youtube.com' or c.domain.endswith('.youtube.com'))
+                       and (c.expires in (None, 0) or not c.is_expired()) for c in jar):
                 raise ValueError('文件没有未过期的 youtube.com Cookie，请重新导出')
             tmp.replace(path)
         except (http.cookiejar.LoadError, OSError) as exc:
