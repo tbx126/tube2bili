@@ -38,7 +38,7 @@ def test_youtube_auth_detection_is_specific(tmp_path, monkeypatch):
     with pytest.raises(Waiting, match='尚未配置 YouTube 登录 Cookie'):
         raise youtube_auth_waiting()
     (tmp_path / 'youtube-cookies.txt').write_text('# Netscape HTTP Cookie File\n', 'utf-8')
-    with pytest.raises(Waiting, match='已失效或被轮换'):
+    with pytest.raises(Waiting, match='不能仅据此判定 Cookie 失效'):
         raise youtube_auth_waiting()
 
 

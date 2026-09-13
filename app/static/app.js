@@ -435,10 +435,13 @@ async function drawSettings() {
         <div class="row between" style="margin-top:16px">
           <div>
             <strong>YouTube</strong>
+            <p class="help">${s.youtube_pot_configured ? '已配置自动 PO Token 服务（实际可用性在下载时检查）' : '未配置自动 PO Token 服务'}</p>
             <p class="help">${s.youtube_configured?'已配置 cookies.txt':'可选：遇到登录限制时导入 Netscape cookies.txt'}</p>
+            <p class="help">匿名优先，仅登录或请求验证失败时尝试 Cookie。文件保存在 NAS 数据卷，下载使用独立副本。更新后自动恢复因 YouTube 登录等待的任务。</p>
           </div>
           <button type="button" data-action="credentials" data-provider="youtube">导入 cookies.txt</button>
         </div>
+        ${field('YouTube 下载最小间隔（秒）','youtube_sleep_seconds',s.youtube_sleep_seconds,'number','min="5" max="120"')}
         <p class="help" style="margin-top:16px">也可以在 NAS 终端执行：<code>docker compose exec app biliup -u /data/cookies.json login</code></p>
       </div>
     </section>
@@ -789,10 +792,10 @@ document.addEventListener('submit', async e => {
     if (form.id === 'credential-form') {
       const file = data.get('file');
       if (file.size > 2000000) throw new Error('登录文件不能超过 2 MB');
-      await api('/credentials/' + form.dataset.provider, 'PUT', {content: await file.text()});
+      const result = await api('/credentials/' + form.dataset.provider, 'PUT', {content: await file.text()});
       $('#modal').close();
       if (page === 'settings') await drawSettings();
-      toast('登录凭证已保存');
+      toast(result.resumed ? `登录凭证已保存，已恢复 ${result.resumed} 个 YouTube 等待任务` : '登录凭证已保存');
     }
     if (form.id === 'link-form') {
       await api(`/tasks/${form.dataset.id}/action`, 'POST', {action: 'link', bvid: data.get('bvid')});

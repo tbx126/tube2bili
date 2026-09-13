@@ -342,6 +342,7 @@ def settings():
     value = config.public()
     value['bilibili_configured'] = (store.DATA / 'cookies.json').exists()
     value['youtube_configured'] = (store.DATA / 'youtube-cookies.txt').exists()
+    value['youtube_pot_configured'] = bool(os.environ.get('POT_PROVIDER_URL'))
     value['tools'] = {name: bool(shutil.which(name)) for name in ('ffmpeg', 'node', 'biliup')}
     value['tools']['biliup'] = value['tools']['biliup'] or Path(sys.executable).with_name('biliup.exe' if sys.platform == 'win32' else 'biliup').is_file()
     return value
@@ -387,9 +388,11 @@ def credential_file(provider: str, value: Credentials):
             raise HTTPException(422, '需要 biliup 导出的完整 cookies.json（Cookie、token_info、sso）；仅网页 Cookie 无法用于当前上传工具。也可直接扫码登录。')
         path = store.DATA / 'cookies.json'
     elif provider == 'youtube':
-        if not is_netscape_cookie_file(value.content):
-            raise HTTPException(422, '需要 Netscape 格式的 cookies.txt')
-        path = store.DATA / 'youtube-cookies.txt'
+        from .youtube import import_cookie
+        try:
+            return {'ok': True, 'resumed': import_cookie(value.content)}
+        except ValueError as exc:
+            raise HTTPException(422, str(exc))
     else:
         raise HTTPException(404)
     tmp = path.with_suffix('.tmp')

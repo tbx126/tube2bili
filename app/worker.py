@@ -9,7 +9,8 @@ import httpx
 
 from . import config, store
 from .language import translate
-from .media import Reconcile, Stopped, Waiting, check, download, run, ytdlp
+from .media import Reconcile, Stopped, Waiting, YouTubeError, check, download, run, ytdlp
+from .youtube import LoginRequired, execute as youtube_execute, login_notice
 
 STOP = threading.Event()
 ACTIVE = set()
@@ -69,7 +70,28 @@ def process(task_id):
     except Waiting as exc:
         if store.task(task_id)['status'] not in ('paused', 'cancelled'):
             store.update(task_id, status='waiting', error=str(exc))
-            store.notice(f'任务等待处理：{store.task(task_id)["title"]}\n{exc}')
+            if isinstance(exc, LoginRequired):
+                payload = store.task(task_id)['payload']
+                payload['youtube_login_required'] = True
+                store.update(task_id, payload=payload)
+                login_notice()
+            else:
+                store.notice(f'任务等待处理：{store.task(task_id)["title"]}\n{exc}')
+    except YouTubeError as exc:
+        task = store.task(task_id)
+        if task['status'] not in ('paused', 'cancelled'):
+            attempts = task['attempts'] + 1
+            limit = 6 if exc.kind == 'rate' else 3
+            status = 'retrying' if attempts < limit else ('waiting' if exc.kind == 'bot' else 'failed')
+            payload = task['payload']
+            payload['youtube_login_required'] = status == 'waiting'
+            store.update(task_id, payload=payload, status=status, attempts=attempts, error=str(exc),
+                         next_run=time.time() + min(3600, 300 * 2**(attempts - 1)))
+            store.event(task_id, str(exc))
+            if status == 'waiting':
+                login_notice()
+            elif status == 'failed':
+                store.notice(f'YouTube 任务失败：{task["title"]}\n{exc}')
     except Exception as exc:
         LOG.warning('Task %s stopped with %s', task_id, type(exc).__name__)
         task = store.task(task_id)
@@ -138,7 +160,7 @@ def poll_channels():
         folder = store.DATA / 'poll' / channel['id']
         folder.mkdir(parents=True, exist_ok=True)
         try:
-            output = run(ytdlp(settings) + ['--flat-playlist', '--dump-single-json', '--skip-download', channel['url']], folder, timeout=900, stop_event=STOP)
+            output = youtube_execute(settings, ['--flat-playlist', '--dump-single-json', '--skip-download', channel['url']], folder, timeout=900, stop_event=STOP)
             value = json.loads(output)
             if not isinstance(value.get('entries'), list):
                 raise ValueError()
@@ -146,6 +168,13 @@ def poll_channels():
         except Stopped:
             return
         except Waiting as exc:
+            message = str(exc)
+            if isinstance(exc, LoginRequired):
+                login_notice()
+            elif not channel['error']:
+                store.notice(f'{channel["name"]}：{message}')
+            store.execute('UPDATE channels SET error=?,last_poll=? WHERE id=?', (message, time.time(), channel['id']))
+        except YouTubeError as exc:
             message = str(exc)
             if not channel['error']:
                 store.notice(f'{channel["name"]}：{message}')
