@@ -89,34 +89,75 @@ function taskTable(tasks) {
   return `<div class="task-list">${tasks.map(t => {
     const coverClass = t.status === 'completed' ? 'cover-completed' : t.status === 'running' ? 'cover-running' : ['waiting','failed','reconcile'].includes(t.status) ? 'cover-attention' : 'cover-neutral';
     const coverIcon = t.status === 'completed' ? icons.check : t.status === 'running' ? icons.running : ['waiting','failed','reconcile'].includes(t.status) ? icons.alert : ['paused','cancelled'].includes(t.status) ? icons.pause : icons.play;
-    return `<article class="task-card ${t.status==='running'?'is-running':''}">
-      <div class="task-cover ${coverClass}" aria-hidden="true">${coverIcon}</div>
-      <div class="task-content">
-        <div class="task-heading">
-          <button class="task-title" data-action="detail" data-id="${t.id}">${esc(t.title||t.video_id)}</button>
-          ${badge(t.status)}
-        </div>
-        <div class="task-meta">
-          <span>${t.channel_id ? '频道订阅' : '手动导入'}</span>
-          <span class="task-id">${esc(t.video_id)}</span>
-          <span>${date(t.created)}</span>
-          ${t.assets_deleted ? '<span>文件已清理</span>' : ''}
-        </div>
-        <div class="task-stage">
-          <span>${t.status==='completed' ? '发布与字幕已完成' : stages[t.stage] || t.stage}</span>
-          <strong>${Math.round(t.progress)}%</strong>
-          <div class="progress" role="progressbar" aria-label="任务进度" aria-valuenow="${Math.round(t.progress)}" aria-valuemin="0" aria-valuemax="100">
-            <i style="width:${t.progress}%"></i>
+    const channel = channelData.find(c => c.id === t.channel_id);
+    const sourceText = channel ? channel.name : (t.channel_id ? '频道订阅' : '手动导入');
+    const stageText = t.status === 'completed'
+      ? '发布与双语字幕已完成'
+      : t.status === 'running'
+      ? `正在处理：${stages[t.stage] || t.stage}`
+      : t.status === 'waiting'
+      ? `等待配置 / 处理：${stages[t.stage] || t.stage}`
+      : t.status === 'retrying'
+      ? `等待重试：${stages[t.stage] || t.stage}`
+      : t.status === 'reconcile'
+      ? '需核对投稿结果'
+      : t.status === 'paused'
+      ? `已暂停：${stages[t.stage] || t.stage}`
+      : stages[t.stage] || t.stage;
+
+    return `<article class="task-card ${t.status === 'running' ? 'is-running' : ''} state-${t.status}">
+      <div class="task-card-header">
+        <div class="task-card-identity">
+          <div class="task-cover ${coverClass}" aria-hidden="true">${coverIcon}</div>
+          <div class="task-title-area">
+            <div class="task-title-row">
+              <button class="task-title" data-action="detail" data-id="${t.id}" title="${esc(t.title || t.video_id)}">
+                ${esc(t.title || t.video_id)}
+              </button>
+              <div class="task-status-badges">
+                ${badge(t.status)}
+                ${t.bvid ? `<a href="https://www.bilibili.com/video/${esc(t.bvid)}" target="_blank" rel="noopener" class="bvid-pill" title="在新窗口打开 B 站稿件"><span class="bvid-tag">B站</span><span class="bvid-code">${esc(t.bvid)}</span>${icons.external}</a>` : ''}
+              </div>
+            </div>
+            <div class="task-meta">
+              <span class="meta-item"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>${esc(sourceText)}</span>
+              <a href="${esc(t.url || 'https://www.youtube.com/watch?v=' + t.video_id)}" target="_blank" rel="noopener" class="meta-item meta-link task-id" title="查看 YouTube 原视频">
+                <span class="yt-badge">YT</span>
+                <span>${esc(t.video_id)}</span>
+                ${icons.external}
+              </a>
+              <span class="meta-item"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${date(t.created)}</span>
+              ${t.assets_deleted ? `<span class="meta-item meta-status-muted"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>本地文件已清理</span>` : ''}
+            </div>
           </div>
         </div>
-        ${t.error && t.status!=='cancelled' ? `<p class="task-error">${esc(t.error)}</p>` : ''}
+        <div class="task-actions">
+          ${['waiting','paused','failed','retrying'].includes(t.status) && !t.assets_deleted ? `<button class="primary" data-action="task-action" data-id="${t.id}" data-command="resume">${icons.play}<span>继续处理</span></button>` : ''}
+          ${t.status === 'running' && t.stage !== 'publish' ? `<button class="ghost" data-action="task-action" data-id="${t.id}" data-command="pause">${icons.pause}<span>暂停</span></button>` : ''}
+          <button class="ghost" data-action="detail" data-id="${t.id}">查看详情</button>
+          <button class="ghost danger" data-action="delete-task" data-id="${t.id}" ${['running','reconcile'].includes(t.status)?'disabled title="请先停止执行或核对投稿"':''}>${icons.trash}<span>删除记录</span></button>
+        </div>
       </div>
-      <div class="task-actions">
-        ${['waiting','paused','failed','retrying'].includes(t.status) && !t.assets_deleted ? `<button data-action="task-action" data-id="${t.id}" data-command="resume">${icons.play}<span>继续处理</span></button>` : ''}
-        ${t.status==='running' && t.stage!=='publish' ? `<button data-action="task-action" data-id="${t.id}" data-command="pause">${icons.pause}<span>暂停</span></button>` : ''}
-        <button class="ghost" data-action="detail" data-id="${t.id}">查看详情</button>
-        <button class="ghost danger" data-action="delete-task" data-id="${t.id}" ${['running','reconcile'].includes(t.status)?'disabled title="请先停止执行或核对投稿"':''}>${icons.trash}<span>删除记录</span></button>
+
+      <div class="task-progress-block">
+        <div class="task-progress-head">
+          <span class="stage-label">
+            <span class="stage-dot stage-dot-${t.status}"></span>
+            ${stageText}
+          </span>
+          <span class="stage-percentage">${Math.round(t.progress)}%</span>
+        </div>
+        <div class="progress" role="progressbar" aria-label="任务进度" aria-valuenow="${Math.round(t.progress)}" aria-valuemin="0" aria-valuemax="100">
+          <i style="width:${t.progress}%"></i>
+        </div>
       </div>
+
+      ${t.error && t.status !== 'cancelled' ? `
+        <div class="task-error">
+          <span class="error-icon">${icons.alert}</span>
+          <span class="error-text">${esc(t.error)}</span>
+        </div>
+      ` : ''}
     </article>`;
   }).join('')}</div>`;
 }
