@@ -11,7 +11,7 @@ from . import qwen
 from .media import Waiting, check, run
 
 
-def load_cues(path):
+def load_cues(path, duration=None):
     cues = list(srt.parse(path.read_text('utf-8-sig')))
     clean = []
     for cue in cues:
@@ -22,6 +22,26 @@ def load_cues(path):
                 clean[-1].end = max(clean[-1].end, cue.end)
             else:
                 clean.append(srt.Subtitle(len(clean) + 1, cue.start, cue.end, text))
+    # YouTube rolling captions retain an earlier line after the next starts.
+    # A single Bilibili track must have disjoint display intervals.
+    clean.sort(key=lambda cue: cue.start)
+    grouped = []
+    for cue in clean:
+        if grouped and cue.start == grouped[-1].start:
+            grouped[-1].content += '\n' + cue.content
+            grouped[-1].end = max(grouped[-1].end, cue.end)
+        else:
+            grouped.append(cue)
+    clean = grouped
+    for current, following in zip(clean, clean[1:]):
+        current.end = min(current.end, following.start)
+    if duration is not None:
+        limit = dt.timedelta(seconds=duration)
+        for cue in clean:
+            cue.end = min(cue.end, limit)
+    clean = [cue for cue in clean if cue.end > cue.start]
+    for index, cue in enumerate(clean, 1):
+        cue.index = index
     if not clean:
         raise Waiting('字幕为空或时间轴无效，请检查源视频')
     return clean
@@ -213,7 +233,8 @@ def translate(task, settings, folder, source):
             en.write_text(srt.compose(load_cues(found[0])), 'utf-8')
         else:
             transcribe(task, settings, folder, source.get('duration'))
-    cues = load_cues(en)
+    cues = load_cues(en, source.get('duration'))
+    en.write_text(srt.compose(cues), 'utf-8')
     zh_cues, bilingual = [], []
     for offset in range(0, len(cues), 40):
         check(task['id'])

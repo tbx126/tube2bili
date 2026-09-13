@@ -143,3 +143,21 @@ def test_bad_mapping_never_cached(client, monkeypatch, tmp_path, lines):
         language.subtitle_lines(task_id, config.get(), path,
             [{'id': 1, 'text': 'a'}, {'id': 2, 'text': 'b'}], 'Chinese')
     assert not path.exists()
+
+
+def test_rolling_captions_are_disjoint_and_clipped(tmp_path):
+    path = tmp_path / 'en.srt'
+    path.write_text('1\n00:00:01,000 --> 00:00:05,000\nFirst\n\n2\n00:00:03,000 --> 00:00:08,000\nSecond\n\n3\n00:00:06,000 --> 00:00:10,000\nThird\n', encoding='utf-8')
+    cues = language.load_cues(path, duration=9)
+    assert [c.content for c in cues] == ['First', 'Second', 'Third']
+    assert [c.start.total_seconds() for c in cues] == [1, 3, 6]
+    assert [c.end.total_seconds() for c in cues] == [3, 6, 9]
+
+
+def test_simultaneous_cues_keep_both_texts(tmp_path):
+    path = tmp_path / 'en.srt'
+    path.write_text('1\n00:00:01,000 --> 00:00:03,000\nFirst\n\n2\n00:00:01,000 --> 00:00:04,000\nSecond\n', encoding='utf-8')
+    cues = language.load_cues(path)
+    assert len(cues) == 1
+    assert cues[0].content == 'First\nSecond'
+    assert cues[0].end.total_seconds() == 4
