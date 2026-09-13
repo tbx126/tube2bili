@@ -190,6 +190,31 @@ class Action(BaseModel):
     bvid: str = ''
 
 
+class CollectionTarget(BaseModel):
+    season_id: int = Field(gt=0)
+    section_id: int = Field(0, ge=0)
+
+
+@app.put('/api/tasks/{task_id}/collection')
+def task_collection(task_id: str, value: CollectionTarget):
+    with worker.ACTIVE_LOCK:
+        task = store.task(task_id)
+        if task_id in worker.ACTIVE or task['status'] not in ('completed', 'waiting', 'failed', 'paused') or task['deleted']:
+            raise HTTPException(409, '请先暂停任务，再设置合集')
+        payload = task['payload']
+        if not payload.get('bvid') or payload.get('assets_deleted'):
+            raise HTTPException(409, '需要已投稿且保留本地处理文件的任务')
+        if task['status'] != 'completed' and task['stage'] != 'collection':
+            raise HTTPException(409, '请先完成视频与字幕步骤')
+        receipt = store.DATA / 'media' / task_id / 'collection-receipt.json'
+        if receipt.exists() and json.loads(receipt.read_text('utf-8')).get('target') != value.model_dump():
+            raise HTTPException(409, '该任务已加入其他目标；请到 B 站手动调整合集')
+        payload['collection_target'] = value.model_dump()
+        store.update(task_id, payload=payload, stage='collection', status='queued', attempts=0, next_run=0, error='')
+        store.event(task_id, '用户设置目标合集，排队执行加入步骤')
+    return {'ok': True}
+
+
 @app.post('/api/tasks/{task_id}/action')
 def task_action(task_id: str, value: Action):
     task = store.task(task_id)
@@ -265,6 +290,17 @@ class Channel(BaseModel):
     url: str = Field(max_length=500)
     enabled: bool = True
     options: config.Posting = Field(default_factory=config.Posting)
+
+
+@app.get('/api/bilibili/collections')
+def bili_collections():
+    from .collections import list_collections
+    try:
+        return list_collections()
+    except Waiting as exc:
+        raise HTTPException(422, str(exc))
+    except Exception:
+        raise HTTPException(502, '无法读取 B 站合集，请检查网络与账号权限')
 
 
 @app.get('/api/channels')

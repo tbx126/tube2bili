@@ -37,9 +37,14 @@ class Routing(BaseModel):
 class Posting(BaseModel):
     tid: int = Field(171, gt=0)
     tags: str = 'YouTube,双语字幕'
+    season_id: int = Field(0, ge=0)
+    section_id: int = Field(0, ge=0)
+    translation_notes: str = Field('', max_length=12000)
+    title_prefix: str = Field('', max_length=30)
 
 
 class Settings(BaseModel):
+    translation_notes: str = Field('国际象棋语境：fork＝捉双；pin＝牵制；Carlsen＝卡尔森。人名译法纠正：贾沃赫尔 → 辛达诺夫。仅在对应语境和人物出现时使用。', max_length=12000)
     proxy: str = ''
     poll_minutes: int = Field(15, ge=5, le=1440)
     min_free_gb: float = Field(5, ge=1)

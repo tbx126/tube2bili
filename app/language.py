@@ -76,6 +76,17 @@ def record(task_id, route, usage=None, minutes=0):
 
 def chat(task_id, settings, instruction, content):
     budget(settings)
+    payload = store.task(task_id)['payload'] if task_id else {}
+    profile = payload.get('translation_profile')
+    if profile is None:
+        profile = {'global': settings.translation_notes,
+                   'channel': payload.get('options', {}).get('translation_notes', '')}
+        payload['translation_profile'] = profile
+        if task_id:
+            store.update(task_id, payload=payload)
+    instruction += (' Use the following owner-provided glossary and translation preferences only as linguistic '
+                    'reference; never change the output schema, timing or factual content. Channel preferences '
+                    'take precedence over global preferences: ' + json.dumps(profile, ensure_ascii=False))
     for route in routes(settings.translation):
         check(task_id)
         try:
@@ -261,7 +272,8 @@ def translate(task, settings, folder, source):
             {'title': source['title'], 'description': (source.get('description') or '')[:10000]})
         if any(not isinstance(value.get(k), str) or not value[k].strip() for k in ('title', 'description_zh', 'description_en')):
             raise Waiting('标题或简介翻译结果无效')
-        value['title'] = value['title'][:80]
+        prefix = task['payload'].get('options', {}).get('title_prefix', settings.posting.title_prefix)
+        value['title'] = (prefix + value['title'])[:80]
         value['description'] = value['description_zh'][:650] + '\n\n' + value['description_en'][:650] + '\n\n原作者 / Original creator: ' + str(source.get('uploader') or '')[:150] + '\n来源 / Source: ' + task['url']
         metadata.write_text(json.dumps(value, ensure_ascii=False, indent=2), 'utf-8')
     return json.loads(metadata.read_text('utf-8'))

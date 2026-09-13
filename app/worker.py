@@ -35,7 +35,7 @@ def process(task_id):
             task = store.task(task_id)
             stage = task['stage']
             store.event(task_id, {'download': '下载视频与原字幕', 'translate': '生成双语字幕与投稿文案',
-                'publish': '上传并提交转载稿件', 'subtitles': '提交 B 站播放器字幕', 'verify': '检查播放器字幕可见状态'}[stage])
+                'publish': '上传并提交转载稿件', 'subtitles': '提交 B 站播放器字幕', 'verify': '检查播放器字幕可见状态', 'collection': '加入 B 站合集'}[stage])
             payload = task['payload']
             if stage == 'download':
                 source = download(task, settings, folder)
@@ -52,6 +52,10 @@ def process(task_id):
                 store.update(task_id, stage='verify', progress=95, attempts=0)
             elif stage == 'verify':
                 verify(task, settings)
+                store.update(task_id, stage='collection', progress=98, attempts=0)
+            elif stage == 'collection':
+                from .collections import add
+                add(task, settings, folder)
                 check(task_id)
                 store.update(task_id, status='completed', progress=100, error='')
                 store.event(task_id, '视频与双语播放器字幕已确认可访问')

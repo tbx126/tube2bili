@@ -2,7 +2,7 @@ const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const names = {overview:'总览',tasks:'任务队列',channels:'频道订阅',settings:'服务设置'};
 const states = {queued:'排队中',running:'处理中',waiting:'等待配置 / 处理',paused:'已暂停',cancelled:'已取消',failed:'失败',retrying:'等待重试',reconcile:'需核对投稿',completed:'已完成'};
-const stages = {download:'下载视频',translate:'翻译字幕',publish:'提交投稿',subtitles:'提交字幕',verify:'确认字幕'};
+const stages = {download:'下载视频',translate:'翻译字幕',publish:'提交投稿',subtitles:'提交字幕',verify:'确认字幕',collection:'加入合集'};
 let page = 'overview', overview, channelData = [], settingsData, filter = '', query = '', toastTimer;
 const date = t => t ? new Date(t * 1000).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '尚未检查';
 const bytes = n => n >= 1024**3 ? (n/1024**3).toFixed(1)+' GB' : (n/1024**2).toFixed(1)+' MB';
@@ -380,6 +380,11 @@ async function drawSettings() {
         ${field('每月费用估算上限（¥，0 为不限）','monthly_budget',s.monthly_budget,'number','min="0" step="any"')}
         ${field('默认投稿分区 ID','posting.tid',s.posting.tid,'number','min="1"')}
         ${field('默认标签（逗号分隔）','posting.tags',s.posting.tags)}
+        ${field('默认合集 ID（0 为不加入）','posting.season_id',s.posting.season_id,'number','min="0"')}
+        ${field('默认小节 ID（单小节可填 0）','posting.section_id',s.posting.section_id,'number','min="0"')}
+        ${field('默认标题前缀（可留空）','posting.title_prefix',s.posting.title_prefix)}
+        <button type="button" data-action="list-collections">查看我的 B 站合集与小节 ID</button>
+        <label class="full">全局翻译资料与术语<textarea name="translation_notes" rows="5" maxlength="12000">${esc(s.translation_notes)}</textarea><small>用于字幕、标题与双语简介；任务首次翻译时保存资料快照。频道资料优先。</small></label>
         <p class="help full">代理使用 NAS 可访问的地址，容器内的 127.0.0.1 指向容器自身。API 服务按各自地址连接。单价统一填写人民币；0 表示尚未计价，预算无法约束未计价调用。</p>
       </div>
     </section>
@@ -498,6 +503,12 @@ async function showDetail(id) {
       <button type="submit">关联稿件并继续字幕</button>
       <p class="help">请先在创作中心核对；无法确定结果时不会再次投稿。</p>
     </form>` : ''}
+    ${payload.bvid && !payload.assets_deleted && (t.status === 'completed' || t.stage === 'collection') ? `<form id="task-collection-form" data-id="${id}">
+      <h3>加入 B 站合集</h3>
+      <div class="fields">${field('合集 ID', 'season_id', payload.collection_target?.season_id || '', 'number', 'min="1" required')}${field('小节 ID（单小节可填 0）', 'section_id', payload.collection_target?.section_id || 0, 'number', 'min="0"')}</div>
+      <p class="help">可在服务设置查看合集 ID。仅执行加入合集；已加入其他合集的稿件请在 B 站手动调整。</p>
+      <button type="submit">保存并加入合集</button>
+    </form>` : ''}
     <h3>本地文件</h3>
     <div class="file-list">
       ${t.files.map(f => `<a href="/api/tasks/${id}/files/${encodeURIComponent(f.name)}" download>${icons.file}<span>${esc(f.name)}</span> <small>${bytes(f.size)}</small></a>`).join('') || '<small>尚未生成文件</small>'}
@@ -517,7 +528,14 @@ function channelModal(channel) {
     <div class="fields">
       ${field('投稿分区 ID', 'tid', options.tid, 'number', 'min="1" required')}
       ${field('投稿标签', 'tags', options.tags)}
+      ${field('合集 ID（0 为不加入）', 'season_id', options.season_id || 0, 'number', 'min="0"')}
+      ${field('小节 ID（单小节可填 0）', 'section_id', options.section_id || 0, 'number', 'min="0"')}
+      ${field('标题前缀（可留空）', 'title_prefix', options.title_prefix || '')}
     </div>
+    <button type="button" data-action="load-channel-collections">从 B 站读取合集</button>
+    <div id="collection-picker"></div>
+    <label>频道翻译资料与术语<textarea name="translation_notes" rows="5" maxlength="12000">${esc(options.translation_notes || '')}</textarea></label>
+    <p class="help">请先在 B 站创作中心创建合集。新任务按转载顺序追加；设置修改不改变已有任务。合集失败只重试加入步骤。</p>
     <p class="help">首次检查只记录现有视频，后续新视频自动进入任务队列。恢复订阅会处理暂停期间发现的新视频。</p>
     <button class="primary" type="submit">${channel ? '保存频道' : '开始订阅'}</button>
   </form>`);
@@ -528,6 +546,21 @@ document.addEventListener('click', async e => {
   if (!button) return;
   const {action, id} = button.dataset;
   try {
+    if (action === 'list-collections' || action === 'load-channel-collections') {
+      const items = await api('/bilibili/collections');
+      const rows = items.flatMap(c => c.sections.map(s => ({...s, season: c.id, label: `${c.title} / ${s.title}（合集 ${c.id}，小节 ${s.id}）`})));
+      if (action === 'list-collections') {
+        modal('我的 B 站合集', rows.map(r => `<p>${esc(r.label)}</p>`).join('') || '<p>当前账号暂无合集，请先在 B 站创作中心创建。</p>');
+      } else {
+        $('#collection-picker').innerHTML = rows.length ? `<label>选择合集小节<select id="collection-select"><option value="">请选择</option>${rows.map(r => `<option value="${Number(r.season)},${Number(r.id)}">${esc(r.label)}</option>`).join('')}</select></label>` : '<p>当前账号暂无合集，请先在 B 站创建。</p>';
+        $('#collection-select')?.addEventListener('change', e => {
+          if (!e.target.value) return;
+          const [season, section] = e.target.value.split(',');
+          $('#channel-form [name="season_id"]').value = season;
+          $('#channel-form [name="section_id"]').value = section;
+        });
+      }
+    }
     if (action === 'clear-filter') { filter=''; query=''; drawTasks(); return; }
     if (action === 'filter-tasks') { filter = button.dataset.filter; drawTasks(); return; }
     if (action === 'refresh-tasks') {
@@ -723,6 +756,11 @@ document.addEventListener('submit', async e => {
       await showDetail(result.id);
       toast('已打开任务；已有视频保留原处理状态');
     }
+    if (form.id === 'task-collection-form') {
+      await api('/tasks/' + form.dataset.id + '/collection', 'PUT', {season_id: Number(data.get('season_id')), section_id: Number(data.get('section_id'))});
+      await showDetail(form.dataset.id);
+      toast('已排队加入合集');
+    }
     if (form.id === 'channel-form') {
       const id = form.dataset.id;
       const old = channelData.find(c => c.id === id);
@@ -730,7 +768,7 @@ document.addEventListener('submit', async e => {
         name: data.get('name'),
         url: data.get('url'),
         enabled: old ? !!old.enabled : true,
-        options: { tid: Number(data.get('tid')), tags: data.get('tags') }
+        options: { tid: Number(data.get('tid')), tags: data.get('tags'), season_id: Number(data.get('season_id')), section_id: Number(data.get('section_id')), title_prefix: data.get('title_prefix'), translation_notes: data.get('translation_notes') }
       });
       $('#modal').close();
       if (page === 'channels') await drawChannels();

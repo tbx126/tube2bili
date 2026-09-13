@@ -58,8 +58,16 @@ Docker 镜像安装 Node 22、ffmpeg、yt-dlp 与 biliup。构建需要访问 De
 
 ## 状态和恢复
 
+### 合集与翻译资料（rc.19）
+
+先在 B 站创作中心创建合集，再到「频道订阅 → 编辑设置 → 从 B 站读取合集」选择小节。新订阅任务继承该配置；手动导入使用「服务设置」中的默认合集，ID 为 0 时关闭。单小节合集可省略小节 ID，多小节必须明确选择。当前按转载顺序追加，不自动按原视频日期重排，也不自动创建合集。
+
+视频及字幕验证完成后独立执行合集步骤，加入失败不会重新投稿。每次重试先查询远端成员，确认成功后保存回执。已完成任务可在详情中填写合集 ID，单独执行加入；合集步骤配置错误也可先暂停后在详情修正。已成功加入其他目标的任务应到 B 站手动调整。账号权限、稿件审核或社区接口变化仍可能导致加入失败。
+
+「服务设置」支持全局翻译资料，「频道订阅」支持专用资料和标题前缀。资料用于字幕与投稿文案，频道规则优先；首次调用翻译时在任务 payload 保存快照，之后修改不影响该任务。已有字幕检查点不会自动重译。预置用户提供的国际象棋译法 fork＝捉双、pin＝牵制、Carlsen＝卡尔森，以及人名纠正贾沃赫尔 → 辛达诺夫，仅在相应语境使用；可编辑或清空。当前资料不注入语音识别。
+
 ```text
-queued → download → translate → publish → subtitles → verify → completed
+queued → download → translate → publish → subtitles → verify → collection → completed
                     ↘ waiting / retrying / failed / paused / cancelled
                               publish → reconcile（提交结果不明确）
 ```
