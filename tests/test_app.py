@@ -153,6 +153,28 @@ def test_deletion_keeps_task_and_dedupe(client):
     assert client.post(f'/api/tasks/{task_id}/action',json={'action':'retry'}).status_code == 409
 
 
+def test_queue_record_delete_hides_but_preserves_task_and_assets(client):
+    task_id = new_task(client)
+    folder = store.DATA / 'media' / task_id
+    folder.mkdir()
+    (folder / 'source.mp4').write_bytes(b'video')
+    store.update(task_id, status='paused')
+    assert client.delete(f'/api/tasks/{task_id}').status_code == 200
+    assert not client.get('/api/overview').json()['tasks']
+    assert store.task(task_id)['deleted'] == 1
+    assert folder.exists() and (folder / 'source.mp4').exists()
+    assert new_task(client) == task_id
+    assert store.task(task_id)['deleted'] == 0
+
+
+def test_queue_record_delete_rejects_active_and_reconcile(client):
+    task_id = new_task(client)
+    store.update(task_id, status='running')
+    assert client.delete(f'/api/tasks/{task_id}').status_code == 409
+    store.update(task_id, status='reconcile')
+    assert client.delete(f'/api/tasks/{task_id}').status_code == 409
+
+
 def test_credentials_not_public_or_arbitrary_files(client):
     task_id = new_task(client)
     value={'cookie_info':{'cookies':[{'name':name,'value':'123' if name=='DedeUserID' else 'SECRET'} for name in ('SESSDATA','bili_jct','DedeUserID')]},

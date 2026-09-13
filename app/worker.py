@@ -95,7 +95,7 @@ def worker_loop():
         try:
             with store.connect() as db:
                 db.execute('BEGIN IMMEDIATE')
-                task = db.execute("SELECT id FROM tasks WHERE status IN ('queued','retrying') AND next_run<=? ORDER BY created LIMIT 1", (time.time(),)).fetchone()
+                task = db.execute("SELECT id FROM tasks WHERE deleted=0 AND status IN ('queued','retrying') AND next_run<=? ORDER BY created LIMIT 1", (time.time(),)).fetchone()
                 if task:
                     db.execute("UPDATE tasks SET status='running',updated=? WHERE id=?", (time.time(), task['id']))
             if task:

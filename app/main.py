@@ -126,7 +126,7 @@ def health():
 
 @app.get('/api/overview')
 def overview():
-    tasks = store.rows('SELECT * FROM tasks ORDER BY created DESC LIMIT 300')
+    tasks = store.rows('SELECT * FROM tasks WHERE deleted=0 ORDER BY created DESC LIMIT 300')
     for task in tasks:
         payload = json.loads(task.pop('payload'))
         task['bvid'] = payload.get('bvid')
@@ -152,7 +152,24 @@ def create_task(value: NewTask):
         video_id, url = youtube_url(value.url)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
-    return {'id': store.enqueue(video_id, url, options=config.get().posting.model_dump())}
+    task_id = store.enqueue(video_id, url, options=config.get().posting.model_dump())
+    store.execute('UPDATE tasks SET deleted=0 WHERE id=?', (task_id,))
+    return {'id': task_id}
+
+
+@app.delete('/api/tasks/{task_id}')
+def delete_task(task_id: str):
+    # Keep the deduplication/publication receipt and media. Serialize with scheduler.
+    with worker.ACTIVE_LOCK, store.connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        task = db.execute('SELECT status FROM tasks WHERE id=?', (task_id,)).fetchone()
+        if not task:
+            raise HTTPException(404, '任务不存在')
+        if task_id in worker.ACTIVE or task['status'] in ('running', 'reconcile'):
+            raise HTTPException(409, '任务正在执行或投稿结果待核对，请先暂停并等待停止，或核对投稿')
+        db.execute("UPDATE tasks SET deleted=1, status=CASE WHEN status='completed' THEN status ELSE 'cancelled' END, updated=? WHERE id=?", (time.time(), task_id))
+    store.event(task_id, '用户删除队列记录；保留本地文件、费用和投稿去重信息')
+    return {'ok': True}
 
 
 @app.get('/api/tasks/{task_id}')
@@ -173,6 +190,8 @@ class Action(BaseModel):
 @app.post('/api/tasks/{task_id}/action')
 def task_action(task_id: str, value: Action):
     task = store.task(task_id)
+    if task['deleted']:
+        raise HTTPException(409, '记录已删除；重新添加原视频链接可找回记录')
     with worker.ACTIVE_LOCK:
         active = task_id in worker.ACTIVE or task['status'] == 'running'
         if value.action in ('pause', 'cancel'):
