@@ -5,7 +5,7 @@
 - NAS 任务 `NXog9AnlTIA` 下载日志确认是 YouTube `Sign in to confirm you’re not a bot`，且 `/data/youtube-cookies.txt` 缺失；根因是 YouTube 登录凭证未配置，不是 Bilibili 投稿凭证。
 - `run()` 现在只匹配明确的 yt-dlp YouTube 登录提示；缺失 Cookie 和已有但失效的 Cookie 返回不同的等待文案。频道轮询不再覆盖该文案。
 - Cookie 导入严格接受两种 Netscape 标准首行，并拒绝 JSON 或任意普通文本；新增单元测试覆盖误判和两种首行格式。
-- 本地 59 项测试与 JavaScript 语法检查通过；待用户导入新的 `youtube-cookies.txt` 后再继续原任务下载验证。
+- 本地 59 项测试与 JavaScript 语法检查通过。用户随后导入 3206 字节的 `youtube-cookies.txt`（权限 600），原任务已完成下载、翻译、B 站投稿和中英字幕提交，生成稿件 `BV13vYY6PEUy`；当前仅等待 B 站播放器字幕可见性检查，不再是 YouTube 登录错误。
 
 ## 0.2.0-rc.17 记录卡片布局重构（2026-09-13）
 
