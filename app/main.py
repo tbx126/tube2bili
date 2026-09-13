@@ -205,7 +205,7 @@ def task_action(task_id: str, value: Action):
     return {'ok': True}
 
 
-FILES = {'source.mp4', 'source.jpg', 'en.srt', 'zh.srt', 'bilingual.srt', 'posting.json'}
+FILES = {'source.mp4', 'source.jpg', 'en.srt', 'zh.srt', 'bilingual.srt', 'bilingual.ass', 'posting.json'}
 
 
 @app.get('/api/tasks/{task_id}/files/{name}')

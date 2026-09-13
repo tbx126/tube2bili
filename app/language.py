@@ -252,6 +252,8 @@ def translate(task, settings, folder, source):
         store.update(task['id'], progress=20 + 40 * min(offset + 40, len(cues)) / len(cues))
     (folder / 'zh.srt').write_text(srt.compose(zh_cues), 'utf-8')
     (folder / 'bilingual.srt').write_text(srt.compose(bilingual), 'utf-8')
+    from .subtitle_style import write_ass
+    write_ass(folder / 'bilingual.ass', zh_cues, cues)
     metadata = folder / 'posting.json'
     if not metadata.exists():
         value = chat(task['id'], settings,
