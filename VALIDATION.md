@@ -1,5 +1,14 @@
 # 验收记录
 
+## 0.2.0-rc.16 Dashboard UI 视觉与体验优化（2026-09-13）
+
+- 全面对齐 `design-system/tube2bili/MASTER.md` 的 Dark Mode (OLED) 技术控制台设计规范，重构 `:root` 样式变量集与层次结构。
+- 引入 Google Fonts（Fira Code 等宽代码字体与 Fira Sans 界面字体），优化数值 tabular-nums 排版质感与 SVG Favicon。
+- 全面移除纯文本/Emoji 图标（如 ✓、↗、▷、＋、→、✕ 等），引入轻量一致的 Heroicons/Lucide 风格矢量 SVG 图标集。
+- 升级总览指标卡（带微徽标与色彩分区）、自动化五步流程图（微交互气泡与连线）、实时网络呼吸指示灯与暗色毛玻璃弹窗/Toasts。
+- 保持任务卡片 3 列响应式网格与操作按钮紧凑对齐，触控区域均保持 >= 44px。
+- 本地 56 项测试全量通过，JavaScript 语法校验通过，静态页面及资源 HTTP 200 验证通过。
+
 ## 0.2.0-rc.15 卡片宽屏间距（2026-09-13）
 
 - 宽屏信息列限制为最多 760px，并以 `justify-content: start` 固定操作组紧随信息列，消除卡片中部过长空白。
