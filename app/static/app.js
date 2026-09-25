@@ -438,9 +438,11 @@ async function drawSettings() {
             <p class="help">${s.youtube_pot_configured ? '已配置自动 PO Token 服务（实际可用性在下载时检查）' : '未配置自动 PO Token 服务'}</p>
             <p class="help">${s.youtube_configured?'已配置 cookies.txt':'可选：遇到登录限制时导入 Netscape cookies.txt'}</p>
             <p class="help">匿名优先，仅登录或请求验证失败时尝试 Cookie。文件保存在 NAS 数据卷，下载使用独立副本。更新后自动恢复因 YouTube 登录等待的任务。</p>
+            <p class="help">${s.youtube_extension_paired?'已配对 Edge 自动同步；YouTube 登录失效时仍需在浏览器重新登录。':'可配对 Edge 扩展，在 Cookie 变化后自动同步至 NAS。'}</p>
           </div>
-          <button type="button" data-action="credentials" data-provider="youtube">导入 cookies.txt</button>
+          <div class="row"><button type="button" data-action="pair-youtube-extension">${s.youtube_extension_paired?'重新配对 Edge':'配对 Edge 自动同步'}</button><button type="button" data-action="credentials" data-provider="youtube">导入 cookies.txt</button></div>
         </div>
+        <small class="help">扩展只读取 youtube.com Cookie，并发送至本 NAS；验证登录有效后才替换当前 Cookie。使用 HTTP 时仅应在可信局域网操作。</small>
         ${field('YouTube 下载最小间隔（秒）','youtube_sleep_seconds',s.youtube_sleep_seconds,'number','min="5" max="120"')}
         <p class="help" style="margin-top:16px">也可以在 NAS 终端执行：<code>docker compose exec app biliup -u /data/cookies.json login</code></p>
       </div>
@@ -570,6 +572,15 @@ document.addEventListener('click', async e => {
       button.disabled = true;
       try { await refresh(); toast('队列已更新'); }
       finally { button.disabled = false; }
+      return;
+    }
+    if (action === 'pair-youtube-extension') {
+      const result = await api('/youtube/extension-pair', 'POST');
+      modal('配对 Edge Cookie 同步', `<p>1. 在 Edge 打开 <code>edge://extensions</code>，启用「开发人员模式」，选择「加载解压缩的扩展」。</p>
+        <p>2. 选择项目目录 <code>${esc(result.extension_path)}</code>，再点击扩展图标填写 NAS 地址和配对码。</p>
+        <p>3. 登录 YouTube。扩展会在 Cookie 更新后同步；YouTube 要求验证时仍需你手动登录。</p>
+        <label>一次性配对码<input readonly value="${esc(result.token)}" autocomplete="off"></label>
+        <p class="help">配对码只显示一次。重新配对会立即撤销之前的扩展密钥。</p>`);
       return;
     }
     if (action === 'delete-task') {

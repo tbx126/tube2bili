@@ -68,6 +68,12 @@ Compose 自动运行 `brainicism/bgutil-ytdlp-pot-provider:2.0.0`，app 使用�
 
 建议使用独立无痕会话：登录后同一标签页打开 `https://www.youtube.com/robots.txt`，导出 youtube.com Cookie 后关闭整个无痕窗口，不再打开该会话。保持代理出口稳定，下载最小间隔默认 5 秒，可在服务设置调整。数据卷持久化不能阻止 YouTube 撤销会话；验证码或二次验证仍需人工处理。本功能不包含常驻浏览器和自动登录。
 
+### Edge Cookie 自动同步（rc.22）
+
+在「服务设置 → YouTube」点击「配对 Edge 自动同步」，按弹窗在 Edge 打开 `edge://extensions`、启用开发人员模式并加载本地项目目录中的 `app/static/edge-cookie-sync`（例如本仓库的 `C:\Users\tbx12\Desktop\st\tube2bili\app\static\edge-cookie-sync`）；打开扩展图标，填写 NAS 地址和一次性配对码。扩展仅请求 YouTube Cookie 读取权限及 NAS 主机权限。YouTube Cookie 变更时，扩展自动将其发送到配对 NAS；NAS 必须从 YouTube 响应中确认 `LOGGED_IN=true` 才原子替换 Cookie，并恢复因登录等待的任务。失败时保留原 Cookie。
+
+配对密钥仅存在 Edge 扩展本地存储，Dashboard 只存 SHA-256 摘要。重新配对会撤销上一个密钥。当前 NAS 使用 HTTP 地址，只应在可信局域网中配对和同步。YouTube 撤销会话、要求密码、验证码或二次验证时，扩展不能代替用户登录；在 Edge 完成验证后将自动同步新的有效会话。
+
 ### 合集与翻译资料（rc.19）
 
 先在 B 站创作中心创建合集，再到「频道订阅 → 编辑设置 → 从 B 站读取合集」选择小节。新订阅任务继承该配置；手动导入使用「服务设置」中的默认合集，ID 为 0 时关闭。单小节合集可省略小节 ID，多小节必须明确选择。当前按转载顺序追加，不自动按原视频日期重排，也不自动创建合集。

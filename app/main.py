@@ -68,9 +68,11 @@ def authenticated(request):
 @app.middleware('http')
 async def guard(request: Request, call_next):
     if request.url.path.startswith('/api/'):
-        if request.method not in ('GET', 'HEAD') and request.headers.get('X-Requested-With') != 'Tube2Bili':
+        if (request.method not in ('GET', 'HEAD')
+                and request.url.path != '/api/youtube/extension-sync'
+                and request.headers.get('X-Requested-With') != 'Tube2Bili'):
             return JSONResponse({'detail': '请求来源无效'}, status_code=403)
-        if request.url.path != '/api/login' and not authenticated(request):
+        if request.url.path not in ('/api/login', '/api/youtube/extension-sync') and not authenticated(request):
             return JSONResponse({'detail': '请先登录'}, status_code=401)
     response = await call_next(request)
     response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -343,6 +345,7 @@ def settings():
     value['bilibili_configured'] = (store.DATA / 'cookies.json').exists()
     value['youtube_configured'] = (store.DATA / 'youtube-cookies.txt').exists()
     value['youtube_pot_configured'] = bool(os.environ.get('POT_PROVIDER_URL'))
+    value['youtube_extension_paired'] = (store.DATA / 'youtube-extension-pair.json').exists()
     value['tools'] = {name: bool(shutil.which(name)) for name in ('ffmpeg', 'node', 'biliup')}
     value['tools']['biliup'] = value['tools']['biliup'] or Path(sys.executable).with_name('biliup.exe' if sys.platform == 'win32' else 'biliup').is_file()
     return value
@@ -376,6 +379,44 @@ def translation_test(slot: str):
 
 class Credentials(BaseModel):
     content: str = Field(max_length=2_000_000)
+
+
+class ExtensionSync(BaseModel):
+    content: str = Field(max_length=2_000_000)
+    token: str = Field(default='', max_length=200)
+
+
+@app.post('/api/youtube/extension-pair')
+def youtube_extension_pair():
+    token = secrets.token_urlsafe(36)
+    path = store.DATA / 'youtube-extension-pair.json'
+    tmp = path.with_suffix('.tmp')
+    tmp.write_text(json.dumps({'sha256': hashlib.sha256(token.encode()).hexdigest(), 'created': time.time()}), 'utf-8')
+    os.chmod(tmp, 0o600)
+    tmp.replace(path)
+    return {'token': token, 'extension_path': 'app/static/edge-cookie-sync'}
+
+
+@app.post('/api/youtube/extension-sync')
+async def youtube_extension_sync(request: Request):
+    from .youtube import validate_cookie_session
+    if int(request.headers.get('content-length', 0) or 0) > 2_000_000:
+        raise HTTPException(413, 'Cookie 文件过大')
+    try:
+        value = ExtensionSync.model_validate(json.loads(await request.body()))
+    except (ValueError, ValidationError):
+        raise HTTPException(422, '同步内容格式错误')
+    pair_file = store.DATA / 'youtube-extension-pair.json'
+    stored = json.loads(pair_file.read_text('utf-8')) if pair_file.exists() else {}
+    presented = value.token
+    digest = hashlib.sha256(presented.encode()).hexdigest() if presented else ''
+    if not presented or not hmac.compare_digest(digest, stored.get('sha256', '')):
+        raise HTTPException(401, 'Edge 扩展尚未配对，请在 Dashboard 重新生成配对码')
+    try:
+        resumed = validate_cookie_session(value.content, config.get().proxy)
+    except (ValueError, httpx.HTTPError):
+        raise HTTPException(422, 'YouTube 未确认 Cookie 有效；NAS 保留原凭证，请重新登录后同步')
+    return {'ok': True, 'resumed': resumed}
 
 
 @app.put('/api/credentials/{provider}')

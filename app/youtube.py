@@ -1,14 +1,18 @@
 """Anonymous-first requests; the stored login cookie is never written by yt-dlp."""
 import os
+import re
 import tempfile
 import threading
 from pathlib import Path
+
+import httpx
 
 from . import store
 from .media import Waiting, YouTubeError, check, run, ytdlp, youtube_cookie_path
 
 COOKIE_LOCK = threading.RLock()
 NOTICE = 'YouTube 登录需要处理：请检查账号权限并重新导入 Cookie；请求验证也可能与代理出口有关。'
+UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
 
 
 class LoginRequired(Waiting):
@@ -88,3 +92,30 @@ def import_cookie(content):
             "WHERE deleted=0 AND status='waiting' AND stage='download' "
             "AND json_extract(payload,'$.youtube_login_required')=1").rowcount
     return count
+
+
+def validate_cookie_session(content, proxy=''):
+    """Accept syncs only when YouTube itself confirms the session is logged in."""
+    import http.cookiejar
+    from .media import is_netscape_cookie_file
+    if not is_netscape_cookie_file(content):
+        raise ValueError('Cookie 文件格式无效')
+    with tempfile.TemporaryDirectory(prefix='youtube-cookie-check-', dir=store.DATA) as directory:
+        path = Path(directory) / 'cookies.txt'
+        path.write_text(content.lstrip('\ufeff'), 'utf-8')
+        jar = http.cookiejar.MozillaCookieJar(str(path))
+        try:
+            jar.load(ignore_discard=True, ignore_expires=True)
+        except (http.cookiejar.LoadError, OSError) as exc:
+            raise ValueError('Cookie 文件无法解析') from exc
+        if not any((c.domain.lstrip('.').endswith('youtube.com')) and
+                   (c.expires in (None, 0) or not c.is_expired()) for c in jar):
+            raise ValueError('没有可用的 youtube.com Cookie')
+        with httpx.Client(proxy=proxy or None, follow_redirects=True, timeout=25,
+                          trust_env=False, headers={'User-Agent': UA}) as client:
+            response = client.get('https://www.youtube.com/', cookies=jar)
+            response.raise_for_status()
+        flags = re.findall(r'"LOGGED_IN"\s*:\s*(true|false)', response.text, flags=re.I)
+        if not flags or flags[-1].lower() != 'true':
+            raise ValueError('YouTube 未确认此登录会话有效；旧 Cookie 保持不变，请先在浏览器重新登录')
+    return import_cookie(content)
