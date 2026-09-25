@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tube2Bili Cookie Sync</title>
+<style>
+body{font:14px system-ui,sans-serif;width:340px;padding:16px;background:#101722;color:#edf3fb}label{display:block;margin:12px 0}input{box-sizing:border-box;width:100%;padding:9px;margin-top:5px;color:inherit;background:#0a1019;border:1px solid #344153;border-radius:6px}button{padding:9px 12px;border:0;border-radius:6px;background:#b7e879;color:#14200b;cursor:pointer}p{line-height:1.5;color:#b4c0d0}small{color:#b4c0d0}#status{min-height:20px}
+</style>
+<h3>Tube2Bili Cookie 同步</h3>
+<label>NAS Dashboard 地址<input id="base" value="http://192.168.5.6:18080" autocomplete="url"></label>
+<label>Dashboard 一次性配对码<input id="token" type="password" autocomplete="off"></label>
+<button id="save">保存并同步</button>
+<p id="status" role="status"></p>
+<small>仅发送 youtube.com Cookie 到配对的 NAS。Google 需要重新登录或验证时，请在 Edge 手动完成。</small>
+<script src="popup.js"></script>
+</html>

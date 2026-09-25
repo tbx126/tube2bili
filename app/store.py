@@ -43,8 +43,18 @@ def init():
         CREATE TABLE IF NOT EXISTS notices (
           id INTEGER PRIMARY KEY AUTOINCREMENT, created REAL, message TEXT,
           sent INTEGER DEFAULT 0, attempts INTEGER DEFAULT 0, next_run REAL DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS runtime_state (
+          key TEXT PRIMARY KEY, value TEXT NOT NULL, updated REAL NOT NULL);
         ''')
-        db.execute("UPDATE tasks SET status='queued' WHERE status='running'")
+        if 'deleted' not in {row['name'] for row in db.execute('PRAGMA table_info(tasks)')}:
+            db.execute('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0')
+        db.execute("UPDATE tasks SET status='queued' WHERE status='running' AND deleted=0")
+        interrupted = db.execute("SELECT id FROM tasks WHERE status='paused' AND deleted=0 AND error='服务关闭时暂停，请继续任务'").fetchall()
+        if interrupted:
+            db.executemany('INSERT INTO events(task_id,created,message) VALUES(?,?,?)',
+                [(row['id'], time.time(), '服务恢复后自动从已保存进度继续') for row in interrupted])
+            db.execute("UPDATE tasks SET status='queued',next_run=0,error='',updated=? "
+                       "WHERE status='paused' AND deleted=0 AND error='服务关闭时暂停，请继续任务'", (time.time(),))
 
 
 def rows(sql, args=()):
@@ -82,6 +92,23 @@ def event(task_id, message):
 
 def notice(message):
     execute('INSERT INTO notices(created,message) VALUES(?,?)', (time.time(), message))
+
+
+def get_runtime_state(key, default=None):
+    found = rows('SELECT value FROM runtime_state WHERE key=?', (key,))
+    if not found:
+        return default
+    try:
+        return json.loads(found[0]['value'])
+    except (TypeError, ValueError):
+        return default
+
+
+def set_runtime_state(key, value):
+    with connect() as db:
+        db.execute('''INSERT INTO runtime_state(key,value,updated) VALUES(?,?,?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated=excluded.updated''',
+            (key, json.dumps(value, ensure_ascii=False), time.time()))
 
 
 def enqueue(video_id, url, channel_id=None, options=None, db=None):

@@ -2,7 +2,7 @@
 
 个人 NAS 上运行的 YouTube → Bilibili 双语视频工作台。Python / FastAPI + SQLite，原生 HTML/CSS/JavaScript Dashboard，一个容器、一个任务工作线程，无 Redis 或外部数据库。
 
-当前版本：**0.1.0**。变更见 [CHANGELOG.md](CHANGELOG.md)，验证范围见 [VALIDATION.md](VALIDATION.md)。
+当前版本：**0.2.0-rc.23**。变更见 [CHANGELOG.md](CHANGELOG.md)，验证范围见 [VALIDATION.md](VALIDATION.md)。
 
 ## 版本管理
 
@@ -46,6 +46,8 @@
    ```
 
    按终端提示完成扫码登录。也可以在 Dashboard 导入已有的 biliup `cookies.json`。YouTube 如需登录，导入 Netscape 格式 `cookies.txt`。本项目不读取电脑现有浏览器登录数据。
+
+   YouTube Cookie 建议在 Edge InPrivate / Chrome 无痕窗口中完成：登录 YouTube，在同一标签页打开 `https://www.youtube.com/robots.txt`，使用 Cookie 导出扩展只导出 `youtube.com`，导出后立即关闭无痕窗口，再从 Dashboard 的「服务设置 → YouTube」导入。不要把 Cookie 文件提交到 Git 或发送给他人。
 8. 点击 Telegram 测试通知，然后添加频道或手动视频链接。首次真实验证建议使用你指定的一条可转载视频；创建任务即授权系统自动投稿。
 
 Docker 镜像安装 Node 22、ffmpeg、yt-dlp 与 biliup。构建需要访问 Debian 包源和 PyPI；NAS 的浏览器代理不一定等同于 Docker 构建代理，请在 NAS Docker 配置中设置可用的镜像/网络。
@@ -56,8 +58,34 @@ Docker 镜像安装 Node 22、ffmpeg、yt-dlp 与 biliup。构建需要访问 De
 
 ## 状态和恢复
 
+### YouTube 会话与请求恢复（rc.21）
+
+默认先匿名获取视频/订阅，仅收到登录要求或机器人验证时使用 Cookie 副本重试一次；429 限流、403/令牌错误与网络故障不会自动切换账号。登录要求进入等待，机器人验证先退避重试，仍失败后等待人工检查；提示不再断言 Cookie 已过期。限流最多重试 6 次，其余下载错误最多 3 次，间隔从 5 分钟递增，最多 1 小时。频道轮询按原轮询间隔检查。
+
+Compose 自动运行 `brainicism/bgutil-ytdlp-pot-provider:2.0.0`，app 使用匹配的 Python 插件和 mweb 客户端。服务仅在 Docker 网络可访问，不映射宿主端口；NAS 自定义的 Compose extends 配置必须同时声明 `pot-provider` 服务。`POT_PROVIDER_URL` 指定内部服务地址，本地开发未设置时沿用 yt-dlp 默认客户端。PO Token 无法保证所有请求通过风控。
+
+原始 Cookie 保存在 `/data/youtube-cookies.txt`，临时副本使用独立目录、权限 0600，正常退出/异常时清理；临时副本的工具写回不覆盖原始 Cookie。导入时校验 Netscape 内容及 YouTube 域 Cookie 到期状态，加锁后原子替换。新 Cookie 自动恢复本版本标记的 YouTube 登录等待任务，不恢复暂停/取消任务。登录通知在同一凭据版本下去重，沿用 Telegram 通知渠道。尚未成功验证登录的文件不会被标注为有效。
+
+建议使用独立无痕会话：登录后同一标签页打开 `https://www.youtube.com/robots.txt`，导出 youtube.com Cookie 后关闭整个无痕窗口，不再打开该会话。保持代理出口稳定，下载最小间隔默认 5 秒，可在服务设置调整。数据卷持久化不能阻止 YouTube 撤销会话；验证码或二次验证仍需人工处理。本功能不包含常驻浏览器和自动登录。
+
+### Edge Cookie 自动同步（rc.22）
+
+在「服务设置 → YouTube」点击「配对 Edge 自动同步」，按弹窗在 Edge 打开 `edge://extensions`、启用开发人员模式并加载本地项目目录中的 `app/static/edge-cookie-sync`（例如本仓库的 `C:\Users\tbx12\Desktop\st\tube2bili\app\static\edge-cookie-sync`）；打开扩展图标，填写 NAS 地址和一次性配对码。扩展仅请求 YouTube Cookie 读取权限及 NAS 主机权限。YouTube Cookie 变更时，扩展自动将其发送到配对 NAS；NAS 必须从 YouTube 响应中确认 `LOGGED_IN=true` 才原子替换 Cookie，并恢复因登录等待的任务。失败时保留原 Cookie。
+
+配对密钥仅存在 Edge 扩展本地存储，Dashboard 只存 SHA-256 摘要。重新配对会撤销上一个密钥。当前 NAS 使用 HTTP 地址，只应在可信局域网中配对和同步。YouTube 撤销会话、要求密码、验证码或二次验证时，扩展不能代替用户登录；在 Edge 完成验证后将自动同步新的有效会话。
+
+YouTube 返回 429 时，全局冷却 NAS 的视频下载和频道轮询，先按 1 小时、2 小时退避；连续三轮仍被限流则暂停待下载任务并提示检查 NAS 代理。更改代理地址会自动恢复这些任务。必须填写 NAS 容器可访问的代理地址；电脑浏览器能访问 YouTube 并不代表 NAS 容器也使用该代理。
+
+### 合集与翻译资料（rc.19）
+
+先在 B 站创作中心创建合集，再到「频道订阅 → 编辑设置 → 从 B 站读取合集」选择小节。新订阅任务继承该配置；手动导入使用「服务设置」中的默认合集，ID 为 0 时关闭。单小节合集可省略小节 ID，多小节必须明确选择。当前按转载顺序追加，不自动按原视频日期重排，也不自动创建合集。
+
+视频及字幕验证完成后独立执行合集步骤，加入失败不会重新投稿。每次重试先查询远端成员，确认成功后保存回执。已完成任务可在详情中填写合集 ID，单独执行加入；合集步骤配置错误也可先暂停后在详情修正。已成功加入其他目标的任务应到 B 站手动调整。账号权限、稿件审核或社区接口变化仍可能导致加入失败。
+
+「服务设置」支持全局翻译资料，「频道订阅」支持专用资料和标题前缀。资料用于字幕与投稿文案，频道规则优先；首次调用翻译时在任务 payload 保存快照，之后修改不影响该任务。已有字幕检查点不会自动重译。预置用户提供的国际象棋译法 fork＝捉双、pin＝牵制、Carlsen＝卡尔森，以及人名纠正贾沃赫尔 → 辛达诺夫，仅在相应语境使用；可编辑或清空。当前资料不注入语音识别。
+
 ```text
-queued → download → translate → publish → subtitles → verify → completed
+queued → download → translate → publish → subtitles → verify → collection → completed
                     ↘ waiting / retrying / failed / paused / cancelled
                               publish → reconcile（提交结果不明确）
 ```
@@ -100,6 +128,8 @@ python -m pytest -q
 首版不包含配音、烧录字幕、封面重做、播放量/点赞统计、多账号、多用户、NAS 硬件监控或公网访问部署。
 
 ## 参考
+
+千问接口、配置示例、候选版验证范围见 [千问接入说明](docs/QWEN.md)。
 
 - [yt-dlp 项目文档](https://github.com/yt-dlp/yt-dlp)
 - [biliup 项目和 CLI](https://github.com/biliup/biliup)
