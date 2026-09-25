@@ -2,7 +2,7 @@
 
 个人 NAS 上运行的 YouTube → Bilibili 双语视频工作台。Python / FastAPI + SQLite，原生 HTML/CSS/JavaScript Dashboard，一个容器、一个任务工作线程，无 Redis 或外部数据库。
 
-当前版本：**0.1.0**。变更见 [CHANGELOG.md](CHANGELOG.md)，验证范围见 [VALIDATION.md](VALIDATION.md)。
+当前版本：**0.2.0-rc.23**。变更见 [CHANGELOG.md](CHANGELOG.md)，验证范围见 [VALIDATION.md](VALIDATION.md)。
 
 ## 版本管理
 
@@ -73,6 +73,8 @@ Compose 自动运行 `brainicism/bgutil-ytdlp-pot-provider:2.0.0`，app 使用�
 在「服务设置 → YouTube」点击「配对 Edge 自动同步」，按弹窗在 Edge 打开 `edge://extensions`、启用开发人员模式并加载本地项目目录中的 `app/static/edge-cookie-sync`（例如本仓库的 `C:\Users\tbx12\Desktop\st\tube2bili\app\static\edge-cookie-sync`）；打开扩展图标，填写 NAS 地址和一次性配对码。扩展仅请求 YouTube Cookie 读取权限及 NAS 主机权限。YouTube Cookie 变更时，扩展自动将其发送到配对 NAS；NAS 必须从 YouTube 响应中确认 `LOGGED_IN=true` 才原子替换 Cookie，并恢复因登录等待的任务。失败时保留原 Cookie。
 
 配对密钥仅存在 Edge 扩展本地存储，Dashboard 只存 SHA-256 摘要。重新配对会撤销上一个密钥。当前 NAS 使用 HTTP 地址，只应在可信局域网中配对和同步。YouTube 撤销会话、要求密码、验证码或二次验证时，扩展不能代替用户登录；在 Edge 完成验证后将自动同步新的有效会话。
+
+YouTube 返回 429 时，全局冷却 NAS 的视频下载和频道轮询，先按 1 小时、2 小时退避；连续三轮仍被限流则暂停待下载任务并提示检查 NAS 代理。更改代理地址会自动恢复这些任务。必须填写 NAS 容器可访问的代理地址；电脑浏览器能访问 YouTube 并不代表 NAS 容器也使用该代理。
 
 ### 合集与翻译资料（rc.19）
 

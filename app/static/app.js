@@ -375,6 +375,7 @@ async function drawSettings() {
       </div>
       <div class="panel-body fields">
         ${field('YouTube / Telegram 代理','proxy',s.proxy,'text','placeholder="http://192.168.1.10:7890"')}
+        <small class="help full">YouTube 下载由 NAS 容器发起；429 限流时会统一冷却下载队列。请确保此处填写的是 NAS 可访问的代理地址。</small>
         ${field('频道检查间隔（分钟）','poll_minutes',s.poll_minutes,'number','min="5" max="1440"')}
         ${field('磁盘最少可用空间（GB）','min_free_gb',s.min_free_gb,'number','min="1" step="any"')}
         ${field('每月费用估算上限（¥，0 为不限）','monthly_budget',s.monthly_budget,'number','min="0" step="any"')}

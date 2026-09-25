@@ -16,6 +16,53 @@ STOP = threading.Event()
 ACTIVE = set()
 ACTIVE_LOCK = threading.Lock()
 LOG = logging.getLogger('tube2bili.worker')
+YOUTUBE_RATE_STATE = 'youtube_rate_limit'
+
+
+def clear_youtube_rate_limit():
+    store.set_runtime_state(YOUTUBE_RATE_STATE, {'strikes': 0, 'until': 0, 'last_at': 0})
+
+
+def _hold_youtube_downloads(task_id=None, task=None):
+    now = time.time()
+    state = store.get_runtime_state(YOUTUBE_RATE_STATE, {}) or {}
+    strikes = int(state.get('strikes', 0)) if now - float(state.get('last_at', 0)) < 7 * 86400 else 0
+    strikes += 1
+    needs_attention = strikes >= 3
+    cooldown = 24 * 3600 if needs_attention else min(24 * 3600, 3600 * 2 ** (strikes - 1))
+    until = now + cooldown
+    proxy_hint = 'NAS 代理尚未配置，请先填写可供容器访问的代理地址' if not config.get().proxy else '请检查 NAS 代理出口'
+    if needs_attention:
+        message = f'YouTube 连续返回 429，已暂停全部待下载任务 24 小时；{proxy_hint}'
+    else:
+        message = f'YouTube 返回 429，全部视频下载冷却 {cooldown // 60} 分钟后再试；{proxy_hint}'
+    store.set_runtime_state(YOUTUBE_RATE_STATE, {'strikes': strikes, 'until': until, 'last_at': now})
+
+    if task is not None:
+        attempts = task['attempts'] + 1
+        store.update(task_id, status='waiting' if needs_attention else 'retrying',
+                     attempts=attempts, next_run=until, error=message)
+        store.event(task_id, message)
+    rows = store.rows("SELECT id FROM tasks WHERE deleted=0 AND stage='download' "
+                      "AND status IN ('queued','retrying') AND id<>COALESCE(?, '')", (task_id,))
+    for row in rows:
+        store.update(row['id'], status='waiting' if needs_attention else 'retrying',
+                     next_run=until, error=message)
+        store.event(row['id'], message)
+    if strikes == 1 or needs_attention:
+        store.notice(message)
+    return message
+
+
+def proxy_changed():
+    clear_youtube_rate_limit()
+    now = time.time()
+    rows = store.rows("SELECT id FROM tasks WHERE deleted=0 AND stage='download' "
+                      "AND status IN ('waiting','retrying') "
+                      "AND (error LIKE '%429%' OR error LIKE '%请求限流%')")
+    for row in rows:
+        store.update(row['id'], status='queued', attempts=0, next_run=0, error='')
+        store.event(row['id'], 'NAS 代理配置已更新，恢复 YouTube 下载队列')
 
 
 def process(task_id):
@@ -40,6 +87,7 @@ def process(task_id):
             payload = task['payload']
             if stage == 'download':
                 source = download(task, settings, folder)
+                clear_youtube_rate_limit()
                 store.update(task_id, title=source.get('title') or task['video_id'], stage='translate', progress=20, attempts=0)
             elif stage == 'translate':
                 source = json.loads((folder / 'source.json').read_text('utf-8'))
@@ -80,6 +128,9 @@ def process(task_id):
     except YouTubeError as exc:
         task = store.task(task_id)
         if task['status'] not in ('paused', 'cancelled'):
+            if exc.kind == 'rate':
+                _hold_youtube_downloads(task_id, task)
+                return
             attempts = task['attempts'] + 1
             limit = 6 if exc.kind == 'rate' else 3
             status = 'retrying' if attempts < limit else ('waiting' if exc.kind == 'bot' else 'failed')
@@ -100,6 +151,14 @@ def process(task_id):
             # Processing and subtitle review can take hours on the platform.
             limit = 144 if task['stage'] in ('subtitles', 'verify') else 3
             message = '平台仍在处理或字幕不可用，稍后检查' if limit == 144 else '步骤执行失败，请检查服务配置和网络'
+            if limit == 144:
+                result_file = store.DATA / 'media' / task_id / f"{task['stage']}-result.json"
+                try:
+                    result = json.loads(result_file.read_text('utf-8'))
+                    if result.get('error_code') == -404:
+                        message = 'B 站稿件暂不可读取（API -404，可能仍在审核/转码或当前不可访问）；保留任务，稍后自动复查'
+                except (OSError, ValueError, AttributeError):
+                    pass
             if attempts >= limit:
                 store.update(task_id, status='failed', attempts=attempts, error=message)
                 store.notice(f'任务失败：{task["title"]}\n{message}')
@@ -119,9 +178,13 @@ def process(task_id):
 def worker_loop():
     while not STOP.is_set():
         try:
+            now = time.time()
+            cooldown_until = float((store.get_runtime_state(YOUTUBE_RATE_STATE, {}) or {}).get('until', 0))
             with store.connect() as db:
                 db.execute('BEGIN IMMEDIATE')
-                task = db.execute("SELECT id FROM tasks WHERE deleted=0 AND status IN ('queued','retrying') AND next_run<=? ORDER BY created LIMIT 1", (time.time(),)).fetchone()
+                task = db.execute("SELECT id FROM tasks WHERE deleted=0 AND status IN ('queued','retrying') "
+                    "AND next_run<=? AND (stage!='download' OR ?<=?) ORDER BY created LIMIT 1",
+                    (now, cooldown_until, now)).fetchone()
                 if task:
                     db.execute("UPDATE tasks SET status='running',updated=? WHERE id=?", (time.time(), task['id']))
             if task:
@@ -157,6 +220,8 @@ def poll_channels():
     for channel in store.rows('SELECT * FROM channels WHERE enabled=1 AND last_poll<?', (time.time() - settings.poll_minutes * 60,)):
         if STOP.is_set():
             return
+        if float((store.get_runtime_state(YOUTUBE_RATE_STATE, {}) or {}).get('until', 0)) > time.time():
+            return
         folder = store.DATA / 'poll' / channel['id']
         folder.mkdir(parents=True, exist_ok=True)
         try:
@@ -175,7 +240,7 @@ def poll_channels():
                 store.notice(f'{channel["name"]}：{message}')
             store.execute('UPDATE channels SET error=?,last_poll=? WHERE id=?', (message, time.time(), channel['id']))
         except YouTubeError as exc:
-            message = str(exc)
+            message = _hold_youtube_downloads() if exc.kind == 'rate' else str(exc)
             if not channel['error']:
                 store.notice(f'{channel["name"]}：{message}')
             store.execute('UPDATE channels SET error=?,last_poll=? WHERE id=?', (message, time.time(), channel['id']))

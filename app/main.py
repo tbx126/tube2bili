@@ -353,10 +353,13 @@ def settings():
 
 @app.put('/api/settings')
 def update_settings(value: dict):
+    previous_proxy = config.get().proxy
     try:
         config.merge_public(value)
     except ValidationError:
         raise HTTPException(422, '配置格式不正确，请检查地址、模型和数值范围')
+    if previous_proxy != config.get().proxy:
+        worker.proxy_changed()
     return {'ok': True}
 
 
