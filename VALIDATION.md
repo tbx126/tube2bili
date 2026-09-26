@@ -1,5 +1,11 @@
 # 验收记录
 
+## 0.2.0-rc.24 YouTube 字幕限流隔离（2026-09-26）
+
+- NAS 队列的 yt-dlp 日志确认 429 来自英文字幕请求（`Unable to download video subtitles for 'en'`），视频尚未开始下载；旧流程因此把可选字幕错误误报为整项下载限流。
+- 视频与字幕现改为独立请求；字幕失败会记录任务事件并转用语音识别，视频流自身 429 仍触发全局冷却。
+- 回归测试覆盖上述两条路径；完整本地测试通过（85 项）。
+
 ## 0.2.0-rc.18 YouTube 凭证错误处理（2026-09-13）
 
 - NAS 任务 `NXog9AnlTIA` 下载日志确认是 YouTube `Sign in to confirm you’re not a bot`，且 `/data/youtube-cookies.txt` 缺失；根因是 YouTube 登录凭证未配置，不是 Bilibili 投稿凭证。

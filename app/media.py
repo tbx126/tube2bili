@@ -167,17 +167,29 @@ def ytdlp(settings):
 def download(task, settings, folder):
     if (folder / 'source.json').exists():
         return json.loads((folder / 'source.json').read_text('utf-8'))
-    args = [
+    video_args = [
         '--no-playlist', '--write-info-json', '--write-thumbnail', '--convert-thumbnails', 'jpg',
-        '--write-subs', '--write-auto-subs', '--sub-langs', 'en,en-US,en-GB,en-orig',
-        '--sub-format', 'srt/best', '--convert-subs', 'srt', '--merge-output-format', 'mp4',
+        '--merge-output-format', 'mp4',
         '-f', 'bv*[height<=1080][ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/bv*[height<=1080]+ba/b',
         '--remux-video', 'mp4', '-o', 'source.%(ext)s', task['url']]
     from .youtube import execute
-    execute(settings, args, folder, task['id'])
+    # Keep subtitle endpoints out of the critical video download. YouTube can
+    # rate-limit captions independently; yt-dlp otherwise exits nonzero and
+    # prevents a usable video from reaching the ASR fallback.
+    execute(settings, video_args, folder, task['id'])
     info = json.loads((folder / 'source.info.json').read_text('utf-8'))
     if not (folder / 'source.mp4').exists():
         raise RuntimeError('下载完成但未找到 MP4')
     result = {k: info.get(k) for k in ('title', 'description', 'uploader', 'duration', 'id')}
     (folder / 'source.json').write_text(json.dumps(result, ensure_ascii=False), 'utf-8')
+    subtitle_args = [
+        '--no-playlist', '--skip-download', '--write-subs', '--write-auto-subs',
+        '--sub-langs', 'en,en-US,en-GB,en-orig', '--sub-format', 'srt/best',
+        '--convert-subs', 'srt', '-o', 'source.%(ext)s', task['url']]
+    try:
+        execute(settings, subtitle_args, folder, task['id'])
+    except (Waiting, YouTubeError) as exc:
+        reason = ('下载英文字幕时 YouTube 返回 429' if isinstance(exc, YouTubeError) and exc.kind == 'rate'
+                  else '英文字幕暂不可用')
+        store.event(task['id'], f'{reason}；视频已保存，将尝试从音频识别字幕')
     return result
