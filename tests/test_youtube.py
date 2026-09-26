@@ -75,7 +75,9 @@ def test_session_cookies_without_expiry_are_accepted(client):
     ('WARNING: cookies are no longer valid\nERROR: HTTP Error 429', 'rate'),
     ('ERROR: HTTP Error 403: Forbidden', 'token'),
     ('ERROR: Private video. Sign in if granted access', 'auth'),
-    ('ERROR: Unable to download: connection timed out', 'network')])
+    ('ERROR: Unable to download: connection timed out', 'network'),
+    ('ERROR: Unable to download API page: [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol', 'network'),
+    ('ERROR: TLS handshake failed: remote end closed connection', 'network')])
 def test_error_categories(text, kind):
     assert media.youtube_error_kind(text) == kind
 

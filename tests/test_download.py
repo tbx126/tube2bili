@@ -1,4 +1,5 @@
 import json
+import time
 
 from app import config, media, store, worker
 
@@ -46,3 +47,26 @@ def test_video_429_still_uses_global_cooldown(client, monkeypatch):
     assert store.task(task_id)['status'] == 'retrying'
     assert store.task(task_id)['error'].startswith('YouTube 返回 429')
     assert store.get_runtime_state(worker.YOUTUBE_RATE_STATE)['strikes'] == 1
+
+
+def test_tls_eof_backs_off_all_downloads_until_proxy_recovery(client, monkeypatch):
+    first = store.enqueue('abcdefghijk', 'url')
+    second = store.enqueue('abcdefghijl', 'url')
+
+    def download(*args, **kwargs):
+        raise media.YouTubeError('network')
+
+    monkeypatch.setattr(worker, 'download', download)
+    worker.process(first)
+
+    state = store.get_runtime_state(worker.YOUTUBE_NETWORK_STATE)
+    assert state['strikes'] == 1
+    assert state['until'] > time.time() + 4 * 60
+    assert store.task(first)['status'] == 'retrying'
+    assert store.task(second)['status'] == 'retrying'
+    assert 'TLS/网络连接中断' in store.task(first)['error']
+
+    worker.proxy_changed()
+    assert store.task(first)['status'] == 'queued'
+    assert store.task(second)['status'] == 'queued'
+    assert store.get_runtime_state(worker.YOUTUBE_NETWORK_STATE)['strikes'] == 0

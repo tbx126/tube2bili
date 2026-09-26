@@ -17,10 +17,16 @@ ACTIVE = set()
 ACTIVE_LOCK = threading.Lock()
 LOG = logging.getLogger('tube2bili.worker')
 YOUTUBE_RATE_STATE = 'youtube_rate_limit'
+YOUTUBE_NETWORK_STATE = 'youtube_network_backoff'
 
 
 def clear_youtube_rate_limit():
     store.set_runtime_state(YOUTUBE_RATE_STATE, {'strikes': 0, 'until': 0, 'last_at': 0})
+
+
+def clear_youtube_backoffs():
+    clear_youtube_rate_limit()
+    store.set_runtime_state(YOUTUBE_NETWORK_STATE, {'strikes': 0, 'until': 0, 'last_at': 0})
 
 
 def _hold_youtube_downloads(task_id=None, task=None):
@@ -54,12 +60,38 @@ def _hold_youtube_downloads(task_id=None, task=None):
     return message
 
 
+def _hold_youtube_network(task_id=None, task=None):
+    """Back off the shared download queue after a transient proxy/TLS failure."""
+    now = time.time()
+    state = store.get_runtime_state(YOUTUBE_NETWORK_STATE, {}) or {}
+    strikes = int(state.get('strikes', 0)) if now - float(state.get('last_at', 0)) < 7 * 86400 else 0
+    strikes += 1
+    cooldown = min(3600, 300 * 2 ** (strikes - 1))
+    until = now + cooldown
+    message = (f'YouTube 与 NAS 代理的 TLS/网络连接中断，下载队列暂停 '
+               f'{cooldown // 60} 分钟后自动重试；请检查代理节点健康状态')
+    store.set_runtime_state(YOUTUBE_NETWORK_STATE, {'strikes': strikes, 'until': until, 'last_at': now})
+
+    if task is not None:
+        store.update(task_id, status='retrying', attempts=task['attempts'] + 1,
+                     next_run=until, error=message)
+        store.event(task_id, message)
+    rows = store.rows("SELECT id FROM tasks WHERE deleted=0 AND stage='download' "
+                      "AND status IN ('queued','retrying') AND id<>COALESCE(?, '')", (task_id,))
+    for row in rows:
+        store.update(row['id'], status='retrying', next_run=until, error=message)
+        store.event(row['id'], message)
+    if strikes == 1 or strikes % 3 == 0:
+        store.notice(message)
+    return message
+
+
 def proxy_changed():
-    clear_youtube_rate_limit()
+    clear_youtube_backoffs()
     now = time.time()
     rows = store.rows("SELECT id FROM tasks WHERE deleted=0 AND stage='download' "
                       "AND status IN ('waiting','retrying') "
-                      "AND (error LIKE '%429%' OR error LIKE '%请求限流%')")
+                      "AND (error LIKE '%429%' OR error LIKE '%请求限流%' OR error LIKE '%TLS%')")
     for row in rows:
         store.update(row['id'], status='queued', attempts=0, next_run=0, error='')
         store.event(row['id'], 'NAS 代理配置已更新，恢复 YouTube 下载队列')
@@ -87,7 +119,7 @@ def process(task_id):
             payload = task['payload']
             if stage == 'download':
                 source = download(task, settings, folder)
-                clear_youtube_rate_limit()
+                clear_youtube_backoffs()
                 store.update(task_id, title=source.get('title') or task['video_id'], stage='translate', progress=20, attempts=0)
             elif stage == 'translate':
                 source = json.loads((folder / 'source.json').read_text('utf-8'))
@@ -131,8 +163,11 @@ def process(task_id):
             if exc.kind == 'rate':
                 _hold_youtube_downloads(task_id, task)
                 return
+            if exc.kind == 'network':
+                _hold_youtube_network(task_id, task)
+                return
             attempts = task['attempts'] + 1
-            limit = 6 if exc.kind == 'rate' else 3
+            limit = 3
             status = 'retrying' if attempts < limit else ('waiting' if exc.kind == 'bot' else 'failed')
             payload = task['payload']
             payload['youtube_login_required'] = status == 'waiting'
@@ -180,11 +215,12 @@ def worker_loop():
         try:
             now = time.time()
             cooldown_until = float((store.get_runtime_state(YOUTUBE_RATE_STATE, {}) or {}).get('until', 0))
+            network_until = float((store.get_runtime_state(YOUTUBE_NETWORK_STATE, {}) or {}).get('until', 0))
             with store.connect() as db:
                 db.execute('BEGIN IMMEDIATE')
                 task = db.execute("SELECT id FROM tasks WHERE deleted=0 AND status IN ('queued','retrying') "
                     "AND next_run<=? AND (stage!='download' OR ?<=?) ORDER BY created LIMIT 1",
-                    (now, cooldown_until, now)).fetchone()
+                    (now, max(cooldown_until, network_until), now)).fetchone()
                 if task:
                     db.execute("UPDATE tasks SET status='running',updated=? WHERE id=?", (time.time(), task['id']))
             if task:
@@ -220,7 +256,9 @@ def poll_channels():
     for channel in store.rows('SELECT * FROM channels WHERE enabled=1 AND last_poll<?', (time.time() - settings.poll_minutes * 60,)):
         if STOP.is_set():
             return
-        if float((store.get_runtime_state(YOUTUBE_RATE_STATE, {}) or {}).get('until', 0)) > time.time():
+        rate_until = float((store.get_runtime_state(YOUTUBE_RATE_STATE, {}) or {}).get('until', 0))
+        network_until = float((store.get_runtime_state(YOUTUBE_NETWORK_STATE, {}) or {}).get('until', 0))
+        if max(rate_until, network_until) > time.time():
             return
         folder = store.DATA / 'poll' / channel['id']
         folder.mkdir(parents=True, exist_ok=True)

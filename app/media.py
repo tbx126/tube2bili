@@ -45,7 +45,10 @@ def youtube_error_kind(text):
         return 'auth'
     if any(x in errors for x in ('po token', 'po_token', '403')):
         return 'token'
-    if any(x in errors for x in ('timed out', 'connection', 'resolve', 'proxy', 'network')):
+    if any(x in errors for x in (
+            'timed out', 'connection', 'resolve', 'proxy', 'network',
+            'ssl', 'tls', 'unexpected_eof', 'eof occurred', 'handshake',
+            'connection reset', 'connection refused', 'remote end closed')):
         return 'network'
     return 'other'
 
