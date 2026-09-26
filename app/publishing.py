@@ -69,6 +69,8 @@ def bridge(task, folder, action):
         raise Waiting('B 站登录已失效，请更新凭证后继续任务')
     if result.get('error_code') == 79011:
         raise Waiting('B 站拒绝字幕语言参数（79011），请更新字幕接口配置后继续')
+    if result.get('error_code') == 79014:
+        raise Waiting('B 站字幕超过平台限制（79014）；任务已暂停，请修正过长字幕后继续，不会重复投稿')
     if not result.get('ok'):
         raise RuntimeError('B 站仍在处理或字幕接口暂不可用')
     return result

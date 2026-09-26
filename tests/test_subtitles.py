@@ -40,10 +40,14 @@ def test_live_language_and_existing_receipts(client, monkeypatch, chinese):
     assert asyncio.run(bili_bridge.perform('verify', task_id))['ok']
 
 
-def test_language_error_is_actionable(tmp_path, monkeypatch):
+@pytest.mark.parametrize(('code', 'message'), [
+    (79011, '79011'),
+    (79014, '79014'),
+])
+def test_subtitle_platform_errors_are_actionable(tmp_path, monkeypatch, code, message):
     monkeypatch.setattr(publishing, 'run', lambda *args, **kwargs: None)
-    (tmp_path / 'subtitles-result.json').write_text(json.dumps({'ok': False, 'error_code': 79011}))
-    with pytest.raises(Waiting, match='79011'):
+    (tmp_path / 'subtitles-result.json').write_text(json.dumps({'ok': False, 'error_code': code}))
+    with pytest.raises(Waiting, match=message):
         publishing.bridge({'id': 'test'}, tmp_path, 'subtitles')
 
 

@@ -83,6 +83,46 @@ def test_qwen_mixed_languages_are_not_labelled_english():
     assert qwen.parse_transcript(value)['language'] == ''
 
 
+def test_qwen_audio_cumulative_updates_use_word_timestamps_once():
+    words = [
+        {'begin_time': 200, 'end_time': 600, 'text': 'Hello', 'punctuation': ''},
+        {'begin_time': 600, 'end_time': 1100, 'text': ' world', 'punctuation': '.'},
+    ]
+    value = {'transcripts': [{'channel_id': 0, 'sentences': [
+        {'begin_time': 200, 'end_time': 600, 'text': 'Hello', 'language': 'en', 'words': words[:1]},
+        {'begin_time': 200, 'end_time': 1100, 'text': 'Hello world.', 'language': 'en', 'words': words},
+    ]}]}
+
+    result = qwen.parse_transcript(value)
+
+    assert result['language'] == 'en'
+    assert result['segments'] == [{'start': .2, 'end': 1.1, 'text': 'Hello world.'}]
+
+
+def test_qwen_word_timestamps_are_grouped_into_readable_cues():
+    words = [
+        {'begin_time': index * 500, 'end_time': index * 500 + 350, 'text': 'word', 'punctuation': ''}
+        for index in range(20)
+    ]
+    result = qwen.parse_transcript({'transcripts': [{'channel_id': 0, 'sentences': [{
+        'begin_time': 0, 'end_time': 10000, 'text': ' '.join(['word'] * 20),
+        'language': 'en', 'words': words,
+    }]}]})
+
+    assert len(result['segments']) > 1
+    assert all(len(segment['text']) <= 42 and segment['end'] - segment['start'] <= 5 for segment in result['segments'])
+    assert ' '.join(segment['text'] for segment in result['segments']).split() == ['word'] * 20
+
+
+def test_qwen_long_sentence_without_word_timestamps_is_paused():
+    value = {'transcripts': [{'channel_id': 0, 'sentences': [{
+        'begin_time': 0, 'end_time': 300000, 'text': 'word ' * 1000,
+    }]}]}
+
+    with pytest.raises(language.Waiting, match='词级时间戳'):
+        qwen.parse_transcript(value)
+
+
 def test_wrong_qwen_asr_model_stops_before_http(tmp_path):
     with pytest.raises(language.Waiting, match='filetrans'):
         qwen.transcribe(None, config.Route(model='qwen3-asr-flash'), tmp_path / 'audio.mp3')
@@ -93,12 +133,17 @@ def test_audio_direct_upload_uses_final_timestamps(tmp_path, monkeypatch, stream
     audio = tmp_path / 'audio.mp3'
     audio.write_bytes(b'test-audio')
     route = config.Route(protocol='qwen_audio', base_url='https://qwen.test/api/v1', model='qwen-audio-3.0-asr-flash')
-    sentence = {'sentence_id': 1, 'sentence_end': True, 'begin_time': 500, 'end_time': 2100, 'text': 'Hello'}
+    sentence = {'sentence_id': 1, 'sentence_end': True, 'begin_time': 500, 'end_time': 2100,
+        'text': 'Hello world!', 'words': [
+            {'begin_time': 500, 'end_time': 1100, 'text': 'Hello', 'punctuation': ''},
+            {'begin_time': 1100, 'end_time': 2100, 'text': ' world', 'punctuation': '!'},
+        ]}
     def handler(request):
         assert request.url.path.endswith('/services/aigc/multimodal-generation/generation')
         body = json.loads(request.content)
         assert body['input']['messages'][0]['content'][0]['input_audio']['data'].startswith('data:audio/mpeg;base64,')
         assert body['parameters']['format'] == 'mp3'
+        assert body['parameters']['enable_words'] is True
         if streaming:
             events = [{'output': {'sentence': {**sentence, 'sentence_end': False, 'text': 'partial'}}},
                       {'output': {'sentence': sentence}}]
@@ -108,7 +153,7 @@ def test_audio_direct_upload_uses_final_timestamps(tmp_path, monkeypatch, stream
     original = httpx.Client
     monkeypatch.setattr(httpx, 'Client', lambda **kwargs: original(transport=httpx.MockTransport(handler)))
     result = qwen.transcribe_audio(None, route, audio)
-    assert result['segments'] == [{'start': .5, 'end': 2.1, 'text': 'Hello'}]
+    assert result['segments'] == [{'start': .5, 'end': 2.1, 'text': 'Hello world!'}]
 
 
 def test_direct_audio_segments_keep_offsets(client, monkeypatch):

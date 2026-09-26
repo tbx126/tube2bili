@@ -2,6 +2,7 @@
 import hashlib
 import base64
 import json
+import math
 import os
 import time
 import uuid
@@ -61,10 +62,73 @@ def parse_transcript(value):
                  for s in track['sentences'] if str(s.get('text', '')).strip()]
     if not sentences:
         raise ValueError('ASR returned no timestamped speech')
+    # Qwen Audio SSE can expose rolling cumulative snapshots for one utterance.
+    # Keep only the newest snapshot when timestamps and text show that pattern.
+    latest = []
+    for sentence in sentences:
+        if latest:
+            previous = latest[-1]
+            try:
+                same_start = abs(float(sentence['begin_time']) - float(previous['begin_time'])) <= 1
+                longer = float(sentence['end_time']) >= float(previous['end_time'])
+                prefix = str(sentence['text']).startswith(str(previous['text']))
+            except (KeyError, TypeError, ValueError):
+                same_start = longer = prefix = False
+            if same_start and longer and prefix:
+                latest[-1] = sentence
+                continue
+        latest.append(sentence)
+    sentences = latest
     languages = {s.get('language', '').lower() for s in sentences}
-    return {'language': 'en' if languages == {'en'} else '', 'segments': [
-        {'start': float(s['begin_time']) / 1000, 'end': float(s['end_time']) / 1000,
-         'text': s['text']} for s in sentences]}
+    segments = []
+    for sentence in sentences:
+        words = sentence.get('words')
+        if isinstance(words, list) and words:
+            current_text = ''
+            current_start = current_end = None
+
+            def flush():
+                nonlocal current_text, current_start, current_end
+                if current_text and current_end > current_start:
+                    segments.append({'start': current_start, 'end': current_end, 'text': current_text.strip()})
+                current_text = ''
+                current_start = current_end = None
+
+            for word in words:
+                if not isinstance(word, dict):
+                    continue
+                try:
+                    start = float(word['begin_time']) / 1000
+                    end = float(word['end_time']) / 1000
+                except (KeyError, TypeError, ValueError):
+                    continue
+                text = str(word.get('text') or '')
+                punctuation = str(word.get('punctuation') or '')
+                token = text.strip()
+                if not token or not (math.isfinite(start) and math.isfinite(end) and 0 <= start < end):
+                    continue
+                if punctuation and not token.endswith(punctuation):
+                    token += punctuation
+                cjk = lambda char: '\u2e80' <= char <= '\u9fff' or '\uf900' <= char <= '\ufaff'
+                no_space = (not current_text or token[:1] in ',.!?:;)]}，。！？、；：）'
+                            or cjk(current_text[-1]) or cjk(token[0]))
+                candidate = current_text + ('' if no_space else ' ') + token
+                if current_text and (len(candidate) > 42 or end - current_start > 5):
+                    flush()
+                    candidate = token
+                if not current_text:
+                    current_start = start
+                current_text = candidate
+                current_end = end
+                if punctuation and any(mark in punctuation for mark in '.!?。？！;；'):
+                    flush()
+            flush()
+        else:
+            segments.append({'start': float(sentence['begin_time']) / 1000,
+                'end': float(sentence['end_time']) / 1000, 'text': sentence['text']})
+    if any(len(segment['text']) > 180 or segment['end'] - segment['start'] > 20 for segment in segments):
+        raise Waiting('Qwen ASR 未返回可用的词级时间戳；为避免超长或不同步字幕，任务已暂停')
+    return {'language': 'en' if languages == {'en'} else '', 'segments': segments}
 
 
 def transcribe_audio(task_id, route, audio):
@@ -92,7 +156,7 @@ def transcribe_audio(task_id, route, audio):
             headers={'Authorization': 'Bearer ' + route.api_key, 'X-DashScope-SSE': 'enable'},
             json={'model': route.model, 'input': {'messages': [{'role': 'user', 'content': [
                 {'type': 'input_audio', 'input_audio': {'data': 'data:audio/mpeg;base64,' + encoded}}]}]},
-                  'parameters': {'format': 'mp3', 'sample_rate': '16000'}}) as response:
+                  'parameters': {'format': 'mp3', 'sample_rate': '16000', 'enable_words': True}}) as response:
             response.raise_for_status()
             if 'text/event-stream' in response.headers.get('content-type', ''):
                 data = []
