@@ -2,7 +2,7 @@
 
 个人 NAS 上运行的 YouTube → Bilibili 双语视频工作台。Python / FastAPI + SQLite，原生 HTML/CSS/JavaScript Dashboard，一个容器、一个任务工作线程，无 Redis 或外部数据库。
 
-当前版本：**0.2.0-rc.25**。变更见 [CHANGELOG.md](CHANGELOG.md)，验证范围见 [VALIDATION.md](VALIDATION.md)。
+当前版本：**0.2.0-rc.26**。变更见 [CHANGELOG.md](CHANGELOG.md)，验证范围见 [VALIDATION.md](VALIDATION.md)。
 
 ## 版本管理
 

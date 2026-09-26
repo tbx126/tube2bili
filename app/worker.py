@@ -9,7 +9,7 @@ import httpx
 
 from . import config, store
 from .language import translate
-from .media import Reconcile, Stopped, Waiting, YouTubeError, check, download, run, ytdlp
+from .media import Reconcile, RetryLater, Stopped, Waiting, YouTubeError, check, download, run, ytdlp
 from .youtube import LoginRequired, execute as youtube_execute, login_notice
 
 STOP = threading.Event()
@@ -18,6 +18,7 @@ ACTIVE_LOCK = threading.Lock()
 LOG = logging.getLogger('tube2bili.worker')
 YOUTUBE_RATE_STATE = 'youtube_rate_limit'
 YOUTUBE_NETWORK_STATE = 'youtube_network_backoff'
+AI_BACKOFF_STATE = 'language_api_backoff'
 
 
 def clear_youtube_rate_limit():
@@ -124,6 +125,7 @@ def process(task_id):
             elif stage == 'translate':
                 source = json.loads((folder / 'source.json').read_text('utf-8'))
                 metadata = translate(task, settings, folder, source)
+                store.set_runtime_state(AI_BACKOFF_STATE, {'until': 0, 'last_at': 0})
                 store.update(task_id, title=metadata['title'], stage='publish', progress=65, attempts=0)
             elif stage == 'publish':
                 publish(task, settings, folder)
@@ -147,6 +149,19 @@ def process(task_id):
     except Reconcile as exc:
         store.update(task_id, status='reconcile', error=str(exc))
         store.notice(f'需要核对投稿：{store.task(task_id)["title"]}\n{exc}')
+    except RetryLater as exc:
+        task = store.task(task_id)
+        if task['status'] not in ('paused', 'cancelled'):
+            now = time.time()
+            state = store.get_runtime_state(AI_BACKOFF_STATE, {}) or {}
+            until = max(now + exc.retry_after, float(state.get('until', 0)))
+            store.set_runtime_state(AI_BACKOFF_STATE, {'until': until, 'last_at': now})
+            attempts = task['attempts'] + 1
+            store.update(task_id, status='retrying', attempts=attempts, next_run=until, error=str(exc))
+            delay = max(1, int(until - now))
+            store.event(task_id, f'{exc}；{delay} 秒后自动重试')
+            if attempts == 1:
+                store.notice(f'任务暂时等待：{task["title"]}\n{exc}；系统会自动重试')
     except Waiting as exc:
         if store.task(task_id)['status'] not in ('paused', 'cancelled'):
             store.update(task_id, status='waiting', error=str(exc))
@@ -216,11 +231,13 @@ def worker_loop():
             now = time.time()
             cooldown_until = float((store.get_runtime_state(YOUTUBE_RATE_STATE, {}) or {}).get('until', 0))
             network_until = float((store.get_runtime_state(YOUTUBE_NETWORK_STATE, {}) or {}).get('until', 0))
+            ai_until = float((store.get_runtime_state(AI_BACKOFF_STATE, {}) or {}).get('until', 0))
             with store.connect() as db:
                 db.execute('BEGIN IMMEDIATE')
                 task = db.execute("SELECT id FROM tasks WHERE deleted=0 AND status IN ('queued','retrying') "
-                    "AND next_run<=? AND (stage!='download' OR ?<=?) ORDER BY created LIMIT 1",
-                    (now, max(cooldown_until, network_until), now)).fetchone()
+                    "AND next_run<=? AND (stage!='download' OR ?<=?) AND (stage!='translate' OR ?<=?) "
+                    "ORDER BY created LIMIT 1",
+                    (now, max(cooldown_until, network_until), now, ai_until, now)).fetchone()
                 if task:
                     db.execute("UPDATE tasks SET status='running',updated=? WHERE id=?", (time.time(), task['id']))
             if task:

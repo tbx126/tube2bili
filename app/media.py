@@ -15,6 +15,14 @@ class Waiting(Exception):
     pass
 
 
+class RetryLater(RuntimeError):
+    """A provider error that should be retried without losing task progress."""
+
+    def __init__(self, message, retry_after=300):
+        self.retry_after = max(30, min(3600, int(retry_after)))
+        super().__init__(message)
+
+
 class Stopped(Exception):
     pass
 
