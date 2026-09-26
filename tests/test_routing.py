@@ -67,6 +67,28 @@ def test_empty_provider_content_is_retryable(client, monkeypatch):
     assert error.value.retry_after == 60
 
 
+def test_qwen_translations_use_smaller_batches(client, monkeypatch, tmp_path):
+    task_id = task(client)
+    settings = config.Settings()
+    settings.translation.primary = config.Route(protocol='qwen', base_url='https://qwen.test/v1', model='qwen-plus')
+    folder = tmp_path / 'qwen-small-batches'
+    folder.mkdir()
+    cues = '\n\n'.join(f'{i}\n00:00:{i:02},000 --> 00:00:{i:02},500\nline {i}' for i in range(1, 18))
+    (folder / 'en.srt').write_text(cues + '\n', 'utf-8')
+    batches = []
+    def chat(_task_id, _settings, instruction, content):
+        if 'required_ids' in content:
+            ids = content['required_ids']
+            batches.append(ids)
+            return {'lines': [{'id': value, 'text': f'译文 {value}'} for value in ids]}
+        return {'title': '标题', 'description_zh': '简介', 'description_en': 'Description'}
+    monkeypatch.setattr(language, 'chat', chat)
+
+    language.translate(store.task(task_id), settings, folder, {'title': 'Example'})
+
+    assert [len(batch) for batch in batches] == [8, 8, 1]
+
+
 def test_asr_provider_429_is_retryable(client, monkeypatch, tmp_path):
     task_id = task(client)
     settings = config.Settings()

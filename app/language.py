@@ -64,6 +64,15 @@ def routes(routing):
     return result
 
 
+def subtitle_batch_size(settings):
+    """Keep Qwen prompts small enough to avoid very slow responses on ASR text."""
+    routing = settings.translation
+    candidates = [routing.primary]
+    if routing.fallback_enabled:
+        candidates.append(routing.fallback)
+    return 8 if any(route.protocol == 'qwen' and route.base_url and route.model for route in candidates) else 40
+
+
 def retry_after(headers, default=300):
     try:
         return max(30, min(3600, int(headers.get('Retry-After', default))))
@@ -101,7 +110,8 @@ def chat(task_id, settings, instruction, content):
     for route in routes(settings.translation):
         check(task_id)
         try:
-            with httpx.Client(timeout=180) as client:
+            timeout = 300 if route.protocol == 'qwen' else 180
+            with httpx.Client(timeout=timeout) as client:
                 response = client.post(route.base_url + '/chat/completions',
                     headers={'Authorization': 'Bearer ' + route.api_key}, json={
                         'model': route.model, 'temperature': 0.2,
@@ -284,9 +294,10 @@ def transcribe(task, settings, folder, duration):
                 raise Waiting('语音识别返回了无效时间轴，已暂停处理')
         if detected_language.lower() not in ('en', 'english'):
             # Never force English recognition on non-English audio. Translate detected text first.
-            for chunk in range(0, len(segments), 40):
+            batch_size = subtitle_batch_size(settings)
+            for chunk in range(0, len(segments), batch_size):
                 english_path = folder / f'asr-english-{part}-{chunk}.json'
-                batch = segments[chunk:chunk + 40]
+                batch = segments[chunk:chunk + batch_size]
                 english = subtitle_lines(task['id'], settings, english_path,
                     [{'id': i, 'text': seg['text']} for i, seg in enumerate(batch)], 'English')
                 lines = english.get('lines', [])
@@ -315,9 +326,10 @@ def translate(task, settings, folder, source):
     cues = load_cues(en, source.get('duration'))
     en.write_text(srt.compose(cues), 'utf-8')
     zh_cues, bilingual = [], []
-    for offset in range(0, len(cues), 40):
+    batch_size = subtitle_batch_size(settings)
+    for offset in range(0, len(cues), batch_size):
         check(task['id'])
-        batch = cues[offset:offset + 40]
+        batch = cues[offset:offset + batch_size]
         checkpoint = folder / f'translation-{offset}.json'
         value = subtitle_lines(task['id'], settings, checkpoint,
             [{'id': c.index, 'text': c.content} for c in batch], 'concise natural Simplified Chinese', source['title'])
