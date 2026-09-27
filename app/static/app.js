@@ -37,7 +37,7 @@ async function api(path, method='GET', data) {
   const response = await fetch('/api'+path,{method,headers:{'Content-Type':'application/json','X-Requested-With':'Tube2Bili'},body:data===undefined?undefined:JSON.stringify(data)});
   if (response.status===401) { $('#shell').hidden=true; $('#login').hidden=false; }
   const value = await response.json();
-  if (!response.ok) throw new Error(value.detail || '请求失败');
+  if (!response.ok) throw Object.assign(new Error(value.detail || '请求失败'), {status: response.status});
   return value;
 }
 
@@ -472,6 +472,8 @@ async function navigate() {
 
 async function refresh(render=true) {
   overview = await api('/overview');
+  $('[data-action="logout"]').hidden = !overview.auth_required;
+  $('#login').hidden = true;
   $('#queue-count').textContent = overview.tasks.filter(t => ['queued','running','retrying'].includes(t.status)).length;
   const connText = $('#connection .conn-text');
   if (connText) {
@@ -844,8 +846,12 @@ async function init() {
     await refresh(false);
     $('#shell').hidden = false;
     await navigate();
-  } catch {
-    $('#login').hidden = false;
+  } catch (error) {
+    $('#login').hidden = error.status !== 401;
+    if (error.status !== 401) {
+      $('#shell').hidden = false;
+      toast(error.message);
+    }
   }
 }
 

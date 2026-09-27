@@ -2,7 +2,7 @@
 
 个人 NAS 上运行的 YouTube → Bilibili 双语视频工作台。Python / FastAPI + SQLite，原生 HTML/CSS/JavaScript Dashboard，一个容器、一个任务工作线程，无 Redis 或外部数据库。
 
-当前版本：**0.2.0-rc.28**。变更见 [CHANGELOG.md](CHANGELOG.md)，验证范围见 [VALIDATION.md](VALIDATION.md)。
+当前版本：**0.2.0-rc.29**。变更见 [CHANGELOG.md](CHANGELOG.md)，验证范围见 [VALIDATION.md](VALIDATION.md)。
 
 ## 版本管理
 
@@ -28,7 +28,7 @@
 适用本次目标：Intel N150，16 GB，支持 Docker。无需独立 GPU；不烧录、不配音，语音识别由远程或局域网 API 处理。
 
 1. 将项目复制到 NAS，例如 `/volume1/docker/tube2bili`。
-2. 复制 `.env.example` 为 `.env`，修改 `DASHBOARD_PASSWORD`（至少 12 位）。如有 Python，也可运行 `python scripts/bootstrap.py` 随机生成。
+2. 复制 `.env.example` 为 `.env`，`DASHBOARD_PASSWORD` 留空即可免登录；需要密码时填写至少 12 位。也可运行 `python scripts/bootstrap.py` 生成带随机密码的配置，再按需清空该项。
 3. 设置 `MEDIA_ROOT` 为长期存储目录，例如 `/volume1/docker/tube2bili/data`。该目录保存数据库、所有视频、字幕和凭证，建议整个目录备份。
 4. 在项目目录运行：
 
@@ -37,7 +37,7 @@
    docker compose logs -f app
    ```
 
-5. 浏览器访问 `http://NAS内网IP:8080`，用 `.env` 中的密码登录。
+5. 浏览器访问 `http://NAS内网IP:8080`，直接进入工作台；仅设置密码时需要登录。
 6. 在「服务设置」填写 YouTube / Telegram 代理、API 路由、分区标签及 Telegram Bot Token / Chat ID。API 基础地址填写包含 `/v1` 的地址；局域网无认证服务可以不填 Key。
 7. 登录 B 站：
 

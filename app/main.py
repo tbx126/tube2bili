@@ -31,8 +31,9 @@ LOGIN_FAILURES = {}
 @asynccontextmanager
 async def lifespan(app):
     password = os.environ.get('DASHBOARD_PASSWORD', '')
-    if len(password) < 12:
+    if password and len(password) < 12:
         raise RuntimeError('请设置至少 12 位的 DASHBOARD_PASSWORD（.env 文件）')
+    app.state.auth_required = bool(password)
     store.init()
     secret_file = store.DATA / 'session.key'
     if not secret_file.exists():
@@ -57,6 +58,8 @@ def signed(value):
 
 
 def authenticated(request):
+    if not app.state.auth_required:
+        return True
     token = request.cookies.get('tube_session', '')
     try:
         expiry, nonce, signature = token.split('.')
@@ -102,6 +105,8 @@ class Login(BaseModel):
 
 @app.post('/api/login')
 def login(value: Login, request: Request, response: Response):
+    if not app.state.auth_required:
+        return {'ok': True}
     peer = request.client.host if request.client else 'unknown'
     failures = [x for x in LOGIN_FAILURES.get(peer, []) if x > time.time() - 900]
     if len(failures) >= 8:
@@ -143,7 +148,8 @@ def overview():
     return {'tasks': tasks, 'stats': stats, 'usage': usage, 'daily': daily,
             'disk': {'total': disk.total, 'free': disk.free},
             'notices': store.rows('SELECT * FROM notices ORDER BY id DESC LIMIT 20'),
-            'worker_enabled': os.environ.get('DISABLE_WORKER') != '1'}
+            'worker_enabled': os.environ.get('DISABLE_WORKER') != '1',
+            'auth_required': app.state.auth_required}
 
 
 class NewTask(BaseModel):
