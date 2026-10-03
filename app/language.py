@@ -100,6 +100,9 @@ def chat(task_id, settings, instruction, content):
         payload['translation_profile'] = profile
         if task_id:
             store.update(task_id, payload=payload)
+    if isinstance(content, dict) and content.get('target_language') == 'English':
+        profile = {}
+        instruction += ' Output English only. Do not apply Chinese name mappings to English subtitles; retain original English names. '
     instruction += (' Use the following owner-provided glossary and translation preferences only as linguistic '
                     'reference; never change the output schema, timing or factual content. Channel preferences '
                     'take precedence over global preferences: ' + json.dumps(profile, ensure_ascii=False))
@@ -176,7 +179,7 @@ def subtitle_lines(task_id, settings, checkpoint, source_lines, target, title=''
             'or renumber IDs. Use surrounding fragments only as context. Never add translator notes, explanations, '
             'glossary discussions or commentary. English output must contain only English subtitle text. '
             'Return JSON {"lines":[{"id":<original integer ID>,"text":"translation"}]}.',
-            {'title': title, 'required_ids': expected, 'lines': source_lines})
+            {'title': title, 'target_language': target, 'required_ids': expected, 'lines': source_lines})
     lines = value.get('lines') if isinstance(value, dict) else None
     valid = isinstance(lines, list) and len(lines) == len(expected)
     mapped = {}
