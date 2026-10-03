@@ -165,6 +165,7 @@ def subtitle_lines(task_id, settings, checkpoint, source_lines, target, title=''
     """Validate the entire mapping; never reuse a partially renumbered response."""
     check(task_id)
     expected = [line['id'] for line in source_lines]
+    cached = checkpoint.exists()
     if checkpoint.exists():
         value = json.loads(checkpoint.read_text('utf-8'))
     else:
@@ -198,6 +199,9 @@ def subtitle_lines(task_id, settings, checkpoint, source_lines, target, title=''
     if valid:
         result = {'lines': [mapped[key] for key in expected]}
     else:
+        if cached:
+            checkpoint.unlink(missing_ok=True)
+            return subtitle_lines(task_id, settings, checkpoint, source_lines, target, title)
         store.event(task_id, f'字幕翻译结构不匹配：ID {expected[0]}–{expected[-1]}，期望 {len(expected)} 条，返回 {len(lines) if isinstance(lines, list) else 0} 条；拆分重试')
         if len(source_lines) == 1:
             raise Waiting(f'字幕 ID {expected[0]} 翻译结果仍无效，已暂停；恢复任务可重试')
