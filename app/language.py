@@ -172,7 +172,8 @@ def subtitle_lines(task_id, settings, checkpoint, source_lines, target, title=''
             f'Translate each timed subtitle fragment into {target}. If already in the target language, preserve it. '
             'Each input ID belongs to a fixed time interval. Return exactly one nonempty translation for EACH ID, '
             'including incomplete sentence fragments. Never combine fragments, move meaning between IDs, omit entries, '
-            'or renumber IDs. Use surrounding fragments only as context. '
+            'or renumber IDs. Use surrounding fragments only as context. Never add translator notes, explanations, '
+            'glossary discussions or commentary. English output must contain only English subtitle text. '
             'Return JSON {"lines":[{"id":<original integer ID>,"text":"translation"}]}.',
             {'title': title, 'required_ids': expected, 'lines': source_lines})
     lines = value.get('lines') if isinstance(value, dict) else None
@@ -190,6 +191,10 @@ def subtitle_lines(task_id, settings, checkpoint, source_lines, target, title=''
                 valid = False
                 break
             mapped[key] = {'id': key, 'text': line['text'].strip()}
+            if ('English' in target and re.search(r'[\u4e00-\u9fff]', line['text'])) or re.search(r'(?:译者注|译注|按\s*glossary|根据.*glossary|（注：)', line['text']):
+                valid = False
+                checkpoint.unlink(missing_ok=True)
+                break
     if valid:
         result = {'lines': [mapped[key] for key in expected]}
     else:

@@ -31,9 +31,16 @@ def publish(task, settings, folder):
         return payload['bvid']
     if payload.get('publication_started'):
         raise Reconcile('上次投稿结果不明确；请到创作中心核对并填写 BV 号，避免重复发布')
+    from .title_review import review
+    from .bili_bridge import subtitle_data
+    try:
+        for filename in ('zh.srt', 'en.srt'):
+            subtitle_data(folder / filename)
+    except ValueError as exc:
+        raise Waiting('字幕含翻译注释或语言混杂，请修正后继续；尚未投稿') from exc
+    metadata = review(task, settings, folder)
     cookies()
     executable = shutil.which('biliup') or str(__import__('pathlib').Path(sys.executable).with_name('biliup.exe' if sys.platform == 'win32' else 'biliup'))
-    metadata = json.loads((folder / 'posting.json').read_text('utf-8'))
     options = {**settings.posting.model_dump(), **payload.get('options', {})}
     args = [executable, '-u', str(store.DATA / 'cookies.json'), 'upload', '--submit', 'web',
             '--copyright', '2', '--source', task['url'], '--tid', str(options['tid']),

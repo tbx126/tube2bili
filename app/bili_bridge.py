@@ -2,6 +2,7 @@
 import asyncio
 import json
 import sys
+import re
 
 from bilibili_api import Credential, video
 from bilibili_api.utils.network import Api
@@ -12,10 +13,29 @@ from .publishing import cookies
 
 
 def subtitle_data(path, color='#FFFFFF'):
+    body = []
+    for cue in load_cues(path):
+        if re.search(r'(?:译者注|译注|按\s*glossary|根据.*glossary|（注：)', cue.content) or (path.name == 'en.srt' and re.search(r'[\u4e00-\u9fff]', cue.content)):
+            raise ValueError('Subtitle contains translation commentary')
+        chunks, chunk = [], ''
+        for char in cue.content:
+            if len((chunk + char).encode('utf-8')) > 80:
+                chunks.append(chunk)
+                chunk = ''
+            chunk += char
+        if chunk:
+            chunks.append(chunk)
+        start, end = cue.start.total_seconds(), cue.end.total_seconds()
+        offset = 0
+        for text in chunks:
+            following = offset + len(text)
+            body.append({'from': start + (end-start)*offset/len(cue.content),
+                         'to': start + (end-start)*following/len(cue.content),
+                         'location': 2, 'content': text})
+            offset = following
     return {'font_size': 0.4, 'font_color': color, 'background_alpha': 0.5,
             'background_color': '#000000', 'Stroke': 'none',
-            'body': [{'from': c.start.total_seconds(), 'to': c.end.total_seconds(),
-                      'location': 2, 'content': c.content} for c in load_cues(path)]}
+            'body': body}
 
 
 async def perform(action, task_id):
