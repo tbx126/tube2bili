@@ -67,20 +67,22 @@ def _hold_youtube_network(task_id=None, task=None):
     state = store.get_runtime_state(YOUTUBE_NETWORK_STATE, {}) or {}
     strikes = int(state.get('strikes', 0)) if now - float(state.get('last_at', 0)) < 7 * 86400 else 0
     strikes += 1
-    cooldown = min(3600, 300 * 2 ** (strikes - 1))
+    cooldown = min(3600, 300 * 2 ** min(strikes - 1, 4))
     until = now + cooldown
     message = (f'YouTube 与 NAS 代理的 TLS/网络连接中断，下载队列暂停 '
                f'{cooldown // 60} 分钟后自动重试；请检查代理节点健康状态')
+    if strikes >= 6:
+        message = 'YouTube 与 NAS 代理连续 6 次网络检查失败，已停止自动重试；请检查代理后手动继续'
     store.set_runtime_state(YOUTUBE_NETWORK_STATE, {'strikes': strikes, 'until': until, 'last_at': now})
 
     if task is not None:
-        store.update(task_id, status='retrying', attempts=task['attempts'] + 1,
+        store.update(task_id, status='waiting' if strikes >= 6 else 'retrying', attempts=task['attempts'] + 1,
                      next_run=until, error=message)
         store.event(task_id, message)
     rows = store.rows("SELECT id FROM tasks WHERE deleted=0 AND stage='download' "
                       "AND status IN ('queued','retrying') AND id<>COALESCE(?, '')", (task_id,))
     for row in rows:
-        store.update(row['id'], status='retrying', next_run=until, error=message)
+        store.update(row['id'], status='waiting' if strikes >= 6 else 'retrying', next_run=until, error=message)
         store.event(row['id'], message)
     if strikes == 1 or strikes % 3 == 0:
         store.notice(message)
@@ -157,10 +159,15 @@ def process(task_id):
             until = max(now + exc.retry_after, float(state.get('until', 0)))
             store.set_runtime_state(AI_BACKOFF_STATE, {'until': until, 'last_at': now})
             attempts = task['attempts'] + 1
-            store.update(task_id, status='retrying', attempts=attempts, next_run=until, error=str(exc))
+            exhausted = attempts >= 12
+            message = str(exc) if not exhausted else '翻译服务连续 12 次重试仍失败，请检查服务配置后继续'
+            store.update(task_id, status='waiting' if exhausted else 'retrying', attempts=attempts,
+                         next_run=0 if exhausted else until, error=message)
             delay = max(1, int(until - now))
-            store.event(task_id, f'{exc}；{delay} 秒后自动重试')
-            if attempts == 1:
+            store.event(task_id, message if exhausted else f'{exc}；{delay} 秒后自动重试')
+            if exhausted:
+                store.notice(f'任务等待处理：{task["title"]}\n{message}')
+            elif attempts == 1:
                 store.notice(f'任务暂时等待：{task["title"]}\n{exc}；系统会自动重试')
     except Waiting as exc:
         if store.task(task_id)['status'] not in ('paused', 'cancelled'):
@@ -235,7 +242,7 @@ def worker_loop():
             with store.connect() as db:
                 db.execute('BEGIN IMMEDIATE')
                 task = db.execute("SELECT id FROM tasks WHERE deleted=0 AND status IN ('queued','retrying') "
-                    "AND next_run<=? AND (stage!='download' OR ?<=?) AND (stage!='translate' OR ?<=?) "
+                    "AND next_run<=? AND (stage!='download' OR ?<=?) AND (stage NOT IN ('translate','publish') OR ?<=?) "
                     "ORDER BY created LIMIT 1",
                     (now, max(cooldown_until, network_until), now, ai_until, now)).fetchone()
                 if task:
@@ -295,7 +302,7 @@ def poll_channels():
                 store.notice(f'{channel["name"]}：{message}')
             store.execute('UPDATE channels SET error=?,last_poll=? WHERE id=?', (message, time.time(), channel['id']))
         except YouTubeError as exc:
-            message = _hold_youtube_downloads() if exc.kind == 'rate' else str(exc)
+            message = _hold_youtube_downloads() if exc.kind == 'rate' else _hold_youtube_network() if exc.kind == 'network' else str(exc)
             if not channel['error']:
                 store.notice(f'{channel["name"]}：{message}')
             store.execute('UPDATE channels SET error=?,last_poll=? WHERE id=?', (message, time.time(), channel['id']))

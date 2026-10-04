@@ -40,3 +40,12 @@ def test_cc_limits_and_commentary(tmp_path):
  assert all(a['to']==b['from'] for a,b in zip(body,body[1:]))
  p.write_text('1\n00:00:01,000 --> 00:00:02,000\n（注：翻译解释）')
  with pytest.raises(ValueError):subtitle_data(p)
+
+
+def test_title_review_accepts_name_evidence_in_description(client,tmp_path,monkeypatch):
+ tid=store.enqueue('abcdefghijk','https://www.youtube.com/watch?v=abcdefghijk')
+ (tmp_path/'source.json').write_text(json.dumps({'title':'An incredible game','description':'Gudmundur Gudmundsson vs Bobby Fischer, Iceland 1960'}))
+ (tmp_path/'posting.json').write_text(json.dumps({'title':'古德蒙松对阵菲舍尔'}))
+ monkeypatch.setattr(title_review,'chat',lambda *a:{'verified':True,'title':'古德蒙松对阵菲舍尔','entities':[{'original':'Gudmundur Gudmundsson','translation':'古德蒙松'},{'original':'Bobby Fischer','translation':'菲舍尔'}]})
+ assert title_review.review(store.task(tid),config.get(),tmp_path)['title']=='古德蒙松对阵菲舍尔'
+ assert (tmp_path/'title-review.json').exists()

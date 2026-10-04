@@ -29,15 +29,19 @@ def review(task, settings, folder):
         'uncertain, retain its original Latin name rather than guessing. Preserve the title prefix and meaning. '
         'Return {"title":"corrected title, max 80 characters","verified":true,"entities":'
         '[{"original":"source name","translation":"title name"}]}. verified may be true only when all '
-        'names are accounted for. No explanations in the title.', content)
+        'names are accounted for. entities.original must be an exact quote from original_title or description; '
+        'entities.translation must appear verbatim in your corrected title. Include only entities actually '
+        'used in the corrected title. No explanations in the title.', content)
     title = result.get('title')
     entities = result.get('entities')
     if (result.get('verified') is not True or not isinstance(title, str) or not 0 < len(title.strip()) <= 80
             or not isinstance(entities, list) or any(not isinstance(e, dict)
             or not isinstance(e.get('original'), str) or not e['original'].strip()
-            or e['original'].casefold() not in source['title'].casefold()
+            or e['original'].casefold() not in (source['title'] + '\n' + (source.get('description') or '')[:5000]).casefold()
             or not isinstance(e.get('translation'), str) or not e['translation'].strip()
             or e['translation'] not in title for e in entities)):
+        save(folder / 'title-review-failed.json', result)
+        store.event(task['id'], '标题校验未通过：需 verified=true、有效标题及可在原文定位的姓名映射；原文范围包括标题和简介')
         raise Waiting('发布前标题名称校验未通过，请检查原文与术语表后重试')
     metadata['title'] = title.strip()
     save(folder / 'posting.json', metadata)

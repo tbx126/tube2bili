@@ -14,13 +14,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 
-from . import accounts, config, store, worker
+from . import accounts, config, store, worker, dashboard
 from .media import Waiting, is_netscape_cookie_file, youtube_url
 
 load_dotenv()
@@ -135,21 +135,45 @@ def health():
 
 @app.get('/api/overview')
 def overview():
-    tasks = store.rows('SELECT * FROM tasks WHERE deleted=0 ORDER BY created DESC LIMIT 300')
-    for task in tasks:
-        payload = json.loads(task.pop('payload'))
-        task['bvid'] = payload.get('bvid')
-        task['elapsed_seconds'] = payload.get('elapsed_seconds', 0)
-        task['assets_deleted'] = payload.get('assets_deleted', False)
+    holds = dashboard.cooldowns()
+    tasks = [dashboard.task_view(t, holds) for t in store.rows("SELECT t.*,c.name channel_name FROM tasks t LEFT JOIN channels c ON c.id=t.channel_id WHERE t.deleted=0 ORDER BY CASE WHEN t.status IN ('running','waiting','failed','reconcile','retrying','queued') THEN 0 ELSE 1 END,t.created DESC LIMIT 12")]
     disk = shutil.disk_usage(store.DATA)
-    stats = store.rows("SELECT COUNT(*) total, SUM(status='completed') completed, SUM(status IN ('waiting','failed','reconcile')) attention FROM tasks")[0]
+    stats = dashboard.stats()
     usage = store.rows('SELECT COALESCE(SUM(cost),0) cost, COALESCE(SUM(tokens),0) tokens FROM usage')[0]
-    daily = store.rows("SELECT date(created,'unixepoch') day, COUNT(*) count FROM tasks WHERE created>? GROUP BY day", (time.time() - 7 * 86400,))
+    daily = store.rows("SELECT date(created,'unixepoch','+8 hours') day, COUNT(*) count FROM tasks WHERE deleted=0 AND date(created,'unixepoch','+8 hours')>=date('now','+8 hours','-6 days') GROUP BY day")
     return {'tasks': tasks, 'stats': stats, 'usage': usage, 'daily': daily,
             'disk': {'total': disk.total, 'free': disk.free},
             'notices': store.rows('SELECT * FROM notices ORDER BY id DESC LIMIT 20'),
             'worker_enabled': os.environ.get('DISABLE_WORKER') != '1',
-            'auth_required': app.state.auth_required}
+            'auth_required': app.state.auth_required, 'cooldowns': holds, 'server_time': time.time(),
+            'timezone': 'Asia/Shanghai'}
+
+
+@app.get('/api/tasks')
+def list_tasks(page: int = Query(1, ge=1), size: int = Query(12, ge=1, le=50),
+               status: str = Query('', max_length=30), search: str = Query('', max_length=200),
+               channel: str = Query('', max_length=64), sort: str = Query('newest', pattern='^(newest|oldest|updated)$')):
+    where, args = ['t.deleted=0'], []
+    groups = {'active': ['queued', 'running', 'retrying'], 'attention': ['waiting', 'failed', 'reconcile']}
+    if status:
+        statuses = groups.get(status, [status])
+        where.append('t.status IN (' + ','.join('?' for _ in statuses) + ')')
+        args.extend(statuses)
+    if search.strip():
+        where.append("(t.title LIKE ? ESCAPE '\\' OR t.video_id LIKE ? ESCAPE '\\' OR c.name LIKE ? ESCAPE '\\')")
+        term = '%' + search.strip().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
+        args.extend([term] * 3)
+    if channel:
+        where.append('t.channel_id=?' if channel != 'manual' else 't.channel_id IS NULL')
+        if channel != 'manual': args.append(channel)
+    base = ' FROM tasks t LEFT JOIN channels c ON c.id=t.channel_id WHERE ' + ' AND '.join(where)
+    total = store.rows('SELECT COUNT(*) n' + base, args)[0]['n']
+    pages = max(1, (total + size - 1) // size)
+    page = min(page, pages)
+    order = {'newest': 't.created DESC,t.id', 'oldest': 't.created,t.id', 'updated': 't.updated DESC,t.id'}[sort]
+    holds = dashboard.cooldowns()
+    rows = store.rows('SELECT t.*,c.name channel_name' + base + ' ORDER BY ' + order + ' LIMIT ? OFFSET ?', args + [size, (page-1)*size])
+    return {'tasks': [dashboard.task_view(t, holds) for t in rows], 'total': total, 'page': page, 'pages': pages, 'size': size}
 
 
 class NewTask(BaseModel):
@@ -239,7 +263,11 @@ def task_action(task_id: str, value: Action):
         elif value.action in ('resume', 'retry'):
             if active or task['status'] in ('completed', 'reconcile') or task['payload'].get('assets_deleted'):
                 raise HTTPException(409, '当前任务不能直接重试；请先核对状态')
-            store.update(task_id, status='queued', attempts=0, next_run=0, error='')
+            holds = [h['until'] for h in dashboard.cooldowns() if task['stage'] in h['stages']]
+            until = max(holds, default=0)
+            store.update(task_id, status='retrying' if until else 'queued',
+                         attempts=task['attempts'] if task['status'] == 'retrying' else 0,
+                         next_run=until, error='服务冷却中，到期自动继续' if until else '')
         elif value.action == 'link':
             if active or task['status'] != 'reconcile' or not re.fullmatch(r'BV[0-9A-Za-z]{10}', value.bvid):
                 raise HTTPException(409, '仅可为待核对任务填写有效 BV 号')
@@ -314,9 +342,24 @@ def bili_collections():
 @app.get('/api/channels')
 def channels():
     result = store.rows('SELECT * FROM channels ORDER BY created DESC')
+    holds = [h['until'] for h in dashboard.cooldowns() if 'download' in h['stages']]
+    interval = config.get().poll_minutes * 60
     for item in result:
         item['options'] = json.loads(item['options'])
+        item['next_check'] = max(item['last_poll'] + interval, max(holds, default=0)) if item['enabled'] else None
+        item['task_count'] = store.rows('SELECT COUNT(*) n FROM tasks WHERE deleted=0 AND channel_id=?', (item['id'],))[0]['n']
     return result
+
+
+@app.post('/api/channels/{channel_id}/check')
+def check_channel(channel_id: str):
+    found = store.rows('SELECT enabled FROM channels WHERE id=?', (channel_id,))
+    if not found: raise HTTPException(404, '频道不存在')
+    if not found[0]['enabled']: raise HTTPException(409, '请先恢复频道订阅')
+    holds = [h['until'] for h in dashboard.cooldowns() if 'download' in h['stages']]
+    if holds: raise HTTPException(409, 'YouTube 服务正在冷却，到期会自动检查，请勿重复请求')
+    store.execute('UPDATE channels SET last_poll=0 WHERE id=?', (channel_id,))
+    return {'ok': True}
 
 
 @app.post('/api/channels')

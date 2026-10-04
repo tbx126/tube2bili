@@ -4,6 +4,8 @@ const names = {overview:'总览',tasks:'任务队列',channels:'频道订阅',se
 const states = {queued:'排队中',running:'处理中',waiting:'等待配置 / 处理',paused:'已暂停',cancelled:'已取消',failed:'失败',retrying:'等待重试',reconcile:'需核对投稿',completed:'已完成'};
 const stages = {download:'下载视频',translate:'翻译字幕',publish:'提交投稿',subtitles:'提交字幕',verify:'确认字幕',collection:'加入合集'};
 let page = 'overview', overview, channelData = [], settingsData, filter = '', query = '', toastTimer;
+let taskPage = 1, taskSort = 'newest', taskChannel = '', searchTimer, listGeneration = 0, refreshing = false, settingsDirty = false;
+const waitText = t => t && t > Date.now()/1000 ? `${Math.max(1,Math.ceil((t-Date.now()/1000)/60))} 分钟后` : '等待调度';
 const date = t => t ? new Date(t * 1000).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '尚未检查';
 const bytes = n => n >= 1024**3 ? (n/1024**3).toFixed(1)+' GB' : (n/1024**2).toFixed(1)+' MB';
 
@@ -90,7 +92,7 @@ function taskTable(tasks) {
     const coverClass = t.status === 'completed' ? 'cover-completed' : t.status === 'running' ? 'cover-running' : ['waiting','failed','reconcile'].includes(t.status) ? 'cover-attention' : 'cover-neutral';
     const coverIcon = t.status === 'completed' ? icons.check : t.status === 'running' ? icons.running : ['waiting','failed','reconcile'].includes(t.status) ? icons.alert : ['paused','cancelled'].includes(t.status) ? icons.pause : icons.play;
     const channel = channelData.find(c => c.id === t.channel_id);
-    const sourceText = channel ? channel.name : (t.channel_id ? '频道订阅' : '手动导入');
+    const sourceText = t.channel_name || (channel ? channel.name : (t.channel_id ? '频道订阅' : '手动导入'));
     const stageText = t.status === 'completed'
       ? '发布与双语字幕已完成'
       : t.status === 'running'
@@ -132,7 +134,8 @@ function taskTable(tasks) {
           </div>
         </div>
         <div class="task-actions">
-          ${['waiting','paused','failed','retrying'].includes(t.status) && !t.assets_deleted ? `<button class="primary" data-action="task-action" data-id="${t.id}" data-command="resume">${icons.play}<span>继续处理</span></button>` : ''}
+          ${['waiting','paused','failed'].includes(t.status) && !t.assets_deleted ? `<button class="primary" data-action="task-action" data-id="${t.id}" data-command="resume">${icons.play}<span>${t.status==='paused'?'继续':'重新尝试'}</span></button>` : ''}
+          ${t.status === 'retrying' ? `<button class="ghost" data-action="task-action" data-id="${t.id}" data-command="pause">${icons.pause}<span>暂停重试</span></button>` : ''}
           ${t.status === 'running' && t.stage !== 'publish' ? `<button class="ghost" data-action="task-action" data-id="${t.id}" data-command="pause">${icons.pause}<span>暂停</span></button>` : ''}
           <button class="ghost" data-action="detail" data-id="${t.id}">查看详情</button>
           <button class="ghost danger" data-action="delete-task" data-id="${t.id}" ${['running','reconcile'].includes(t.status)?'disabled title="请先停止执行或核对投稿"':''}>${icons.trash}<span>删除记录</span></button>
@@ -158,6 +161,7 @@ function taskTable(tasks) {
           <span class="error-text">${esc(t.error)}</span>
         </div>
       ` : ''}
+      ${t.status==='retrying' || t.status==='queued' && t.retry_at>Date.now()/1000 ? `<div class="retry-info">${icons.clock}<span>${waitText(t.retry_at)}自动继续 · ${date(t.retry_at)}${t.attempts?` · 已尝试 ${t.attempts} 次`:''}</span></div>` : t.retry_mode==='manual' ? `<div class="retry-info">${icons.alert}<span>需要处理原因后手动继续${t.attempts?` · 已尝试 ${t.attempts} 次`:''}</span><a href="#settings">服务设置 ${icons.arrowRight}</a></div>` : ''}
     </article>`;
   }).join('')}</div>`;
 }
@@ -166,7 +170,7 @@ function drawOverview() {
   const {stats,usage,disk,daily,tasks,notices} = overview;
   const success = stats.total ? Math.round((stats.completed||0) / stats.total * 100) : 0;
   const bars = Array.from({length:7}, (_,i) => {
-    const day = new Date(Date.now() - (6-i) * 86400000).toISOString().slice(0,10);
+    const day = new Date(Date.now() + 8*3600000 - (6-i) * 86400000).toISOString().slice(0,10);
     return {day, count: daily.find(d => d.day === day)?.count || 0};
   });
   const max = Math.max(1, ...bars.map(d => d.count));
@@ -179,11 +183,12 @@ function drawOverview() {
   ];
 
   $('#main').innerHTML = head('视频工作台','查看运行状态、处理异常，让每条视频有序发布。') + `
+    ${systemStatus()}
     <div class="metrics">
       <article class="metric">
         <div class="metric-head"><label>累计任务</label><span class="metric-icon">${icons.video}</span></div>
         <div class="value">${stats.total}</div>
-        <small>订阅抓取 + 手动导入</small>
+        <small>当前保留记录 · 已删除记录不计入</small>
       </article>
       <article class="metric">
         <div class="metric-head"><label>已完成发布</label><span class="metric-icon" style="color:var(--green)">${icons.checkCircle}</span></div>
@@ -218,7 +223,7 @@ function drawOverview() {
         </div>
       </section>
       <section class="panel">
-        <div class="panel-head"><h2>近 7 天任务</h2><small>UTC · 新建任务数</small></div>
+        <div class="panel-head"><h2>近 7 天任务</h2><small>北京时间 · 新建任务数</small></div>
         <div class="panel-body">
           <div class="bars" aria-label="最近七天任务数量">
             ${bars.map(d => `
@@ -236,7 +241,7 @@ function drawOverview() {
       <h2>最近任务</h2>
       <a href="#tasks"><span>查看全部</span> ${icons.arrowRight}</a>
     </div>
-    <section class="panel">${taskTable(tasks.slice(0,5))}</section>
+    <section class="panel">${taskTable([...tasks].sort((a,b)=>Number(isActive(b)||needsAttention(b))-Number(isActive(a)||needsAttention(a))).slice(0,5))}</section>
     <div class="grid-two" style="margin-top:26px">
       <section class="panel">
         <div class="panel-head"><h2>运行通知</h2><small>Telegram & 工作台</small></div>
@@ -268,12 +273,15 @@ function drawOverview() {
 function drawTasks() {
   $('#main').innerHTML = head('任务队列','从下载到发布，掌握每一步进展。') + `
     <div class="queue-summary" id="queue-summary"></div>
+    ${systemStatus()}
     <section class="panel queue-panel">
       <div class="toolbar">
         <div class="search-field">
           <label for="task-search">搜索任务</label>
-          <input id="task-search" placeholder="输入标题或视频 ID" value="${esc(query)}">
+          <input id="task-search" type="search" placeholder="标题、视频 ID 或频道" value="${esc(query)}">
         </div>
+        <div class="filter-field"><label for="task-channel">来源</label><select id="task-channel"><option value="">全部来源</option><option value="manual" ${taskChannel==='manual'?'selected':''}>手动导入</option>${channelData.map(c=>`<option value="${esc(c.id)}" ${taskChannel===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+        <div class="filter-field"><label for="task-sort">排序</label><select id="task-sort"><option value="newest" ${taskSort==='newest'?'selected':''}>最新添加</option><option value="oldest" ${taskSort==='oldest'?'selected':''}>最早添加</option><option value="updated" ${taskSort==='updated'?'selected':''}>最近更新</option></select></div>
         <div class="filter-field">
           <label for="task-filter">处理状态</label>
           <select id="task-filter">
@@ -287,27 +295,35 @@ function drawTasks() {
       </div>
       <div class="list-heading">
         <strong id="result-count"></strong>
-        <small>每 5 秒自动更新</small>
+        <small>每 8 秒自动更新 · 编辑时保留输入</small>
       </div>
       <div id="task-table"></div>
+      <div id="pagination" class="pagination" aria-label="任务分页"></div>
     </section>
-    <p class="help queue-note">显示最近 300 条记录。删除记录保留本地文件和 B 站稿件；重新添加原链接可找回记录，避免重复投稿。</p>`;
-  drawFiltered();
+    <p class="help queue-note">可查询全部记录，每页 12 条。自动重试遵守服务冷却；删除记录保留本地文件和 B 站稿件，重新添加原链接可找回。</p>`;
+  drawFiltered().catch(e=>toast(e.message));
 }
 
-function drawFiltered() {
-  const selected = overview.tasks.filter(t => 
-    (!filter || (filter==='active' ? isActive(t) : filter==='attention' ? needsAttention(t) : t.status===filter)) &&
-    (`${t.title} ${t.video_id}`.toLowerCase().includes(query.toLowerCase()))
-  );
+function systemStatus() {
+  return `<div class="system-status ${overview.worker_enabled?'':'worker-offline'}"><span class="live-dot"></span><strong>${overview.worker_enabled?'工作队列运行中':'工作队列已关闭'}</strong><span>${overview.stats.active||0} 条进行中 · ${overview.stats.attention||0} 条需处理</span>${(overview.cooldowns||[]).map(h=>`<span class="cooldown-chip">${esc(h.name)} · ${waitText(h.until)}恢复</span>`).join('')}<a href="#tasks">查看队列 ${icons.arrowRight}</a></div>`;
+}
+
+async function drawFiltered() {
+  const generation = ++listGeneration;
+  const params = new URLSearchParams({page:taskPage, status:filter,search:query,sort:taskSort,channel:taskChannel});
+  const value = await api('/tasks?'+params);
+  if (generation!==listGeneration || page!=='tasks' || !$('#task-table')) return;
+  taskPage=value.page;
+  const selected = value.tasks;
   $('#task-table').innerHTML = taskTable(selected);
-  if ($('#result-count')) $('#result-count').textContent = `${selected.length} 条记录`;
+  if ($('#result-count')) $('#result-count').textContent = `共 ${value.total} 条记录${filter||query||taskChannel?' · 已筛选':''}`;
+  $('#pagination').innerHTML=`<button class="ghost" data-action="task-page" data-page="${taskPage-1}" ${taskPage<=1?'disabled':''}>上一页</button><span>第 ${taskPage} / ${value.pages} 页</span><button class="ghost" data-action="task-page" data-page="${taskPage+1}" ${taskPage>=value.pages?'disabled':''}>下一页</button>`;
   if ($('#queue-summary')) {
     $('#queue-summary').innerHTML = [
-      ['active', '进行中', overview.tasks.filter(isActive).length, '正在执行或等待执行'],
-      ['attention', '需要处理', overview.tasks.filter(needsAttention).length, '检查配置或核对投稿'],
-      ['completed', '已完成', overview.tasks.filter(t=>t.status==='completed').length, '视频与字幕均已确认'],
-      ['', '全部记录', overview.tasks.length, '当前队列中的任务']
+      ['active', '进行中', overview.stats.active||0, '正在执行、排队或自动重试'],
+      ['attention', '需要处理', overview.stats.attention||0, '需要人工处理后继续'],
+      ['completed', '已完成', overview.stats.completed||0, '视频与字幕均已确认'],
+      ['', '全部记录', overview.stats.total, '全部保留记录']
     ].map(([value, label, count, hint]) => `
       <button class="queue-stat ${filter===value?'selected':''}" data-action="filter-tasks" data-filter="${value}" aria-pressed="${filter===value}">
         <span>${label}</span>
@@ -332,10 +348,12 @@ async function drawChannels() {
           <small>${c.initialized?'基线已建立':'首次检查中 · 尚未建立基线'}</small>
           <small>检查：${date(c.last_poll)}</small>
         </div>
+        <div class="channel-schedule"><span>${c.task_count||0} 条保留任务</span><span>${c.enabled?`下次检查：${waitText(c.next_check)}`:'订阅已暂停'}</span></div>
         ${c.error ? `<p class="error" style="margin-top:14px">${esc(c.error)}</p>` : ''}
         <div class="row">
           <button data-action="edit-channel" data-id="${c.id}">编辑设置</button>
           <button class="ghost" data-action="toggle-channel" data-id="${c.id}">${c.enabled?'暂停订阅':'恢复订阅'}</button>
+          <button class="ghost" data-action="check-channel" data-id="${c.id}" ${c.enabled?'':'disabled'}>检查新视频</button>
         </div>
       </article>
     `).join('')}</div>` : `<section class="panel">${empty('订阅你的第一个频道','新视频会自动进入队列，首次添加不会搬运历史视频。','new-channel','添加频道')}</section>`);
@@ -365,6 +383,7 @@ function routeForm(purpose, slot, route) {
 }
 
 async function drawSettings() {
+  settingsDirty=false;
   settingsData = await api('/settings');
   const s = settingsData;
   $('#main').innerHTML = head('服务设置','连接你的模型服务、投稿账号和通知渠道。', null) + `<form id="settings-form" class="settings-layout">
@@ -453,9 +472,18 @@ async function drawSettings() {
       <button class="primary" type="submit">${icons.check}<span>保存设置</span></button>
     </div>
   </form>`;
+  const sections = [...document.querySelectorAll('#settings-form > section')];
+  const nav = document.createElement('nav');
+  nav.className='settings-nav'; nav.setAttribute('aria-label','设置分组');
+  nav.innerHTML=sections.map((section,i)=>{section.id='settings-section-'+i;return `<button type="button" data-action="settings-section" data-section="${i}">${esc(section.querySelector('h2')?.textContent || '配置')}</button>`;}).join('');
+  $('#settings-form').before(nav);
+  $('#settings-form').addEventListener('input',()=>{ settingsDirty=true; $('#settings-form .save-bar small').textContent='有未保存的修改，请保存后离开'; });
 }
 
 async function navigate() {
+  const destination = location.hash.slice(1) in names ? location.hash.slice(1) : 'overview';
+  if (page==='settings' && destination!=='settings' && settingsDirty && !confirm('设置尚未保存。离开会丢失修改，仍要离开吗？')) { history.replaceState(null,'','#settings'); return; }
+  if (destination!=='settings') settingsDirty=false;
   page = location.hash.slice(1) in names ? location.hash.slice(1) : 'overview';
   document.querySelectorAll('nav a').forEach(a => {
     const active = a.dataset.page === page;
@@ -466,7 +494,7 @@ async function navigate() {
   $('#breadcrumb').textContent = names[page];
   if (page === 'channels') await drawChannels();
   else if (page === 'settings') await drawSettings();
-  else if (page === 'tasks') drawTasks();
+  else if (page === 'tasks') { channelData = await api('/channels'); drawTasks(); }
   else drawOverview();
 }
 
@@ -474,8 +502,9 @@ async function refresh(render=true) {
   overview = await api('/overview');
   $('[data-action="logout"]').hidden = !overview.auth_required;
   $('#login').hidden = true;
-  $('#queue-count').textContent = overview.tasks.filter(t => ['queued','running','retrying'].includes(t.status)).length;
+  $('#queue-count').textContent = overview.stats.active||0;
   const connText = $('#connection .conn-text');
+  $('#connection').classList.toggle('worker-offline',!overview.worker_enabled);
   if (connText) {
     connText.textContent = overview.worker_enabled ? '服务在线 · 自动处理' : '服务在线 · 工作队列已关闭';
   } else {
@@ -483,7 +512,8 @@ async function refresh(render=true) {
   }
   if (render) {
     if (page === 'overview') drawOverview();
-    if (page === 'tasks' && !$('#task-search')?.matches(':focus')) drawFiltered();
+    if (page === 'tasks' && !$('#task-search')?.matches(':focus') && !$('#modal').open && !document.activeElement?.closest('#task-table, #queue-summary, #pagination')) await drawFiltered();
+    if (page === 'channels' && !$('#modal').open && !document.activeElement?.closest('#main button')) await drawChannels();
   }
 }
 
@@ -569,8 +599,11 @@ document.addEventListener('click', async e => {
         });
       }
     }
-    if (action === 'clear-filter') { filter=''; query=''; drawTasks(); return; }
-    if (action === 'filter-tasks') { filter = button.dataset.filter; drawTasks(); return; }
+    if (action === 'clear-filter') { filter=''; query=''; taskChannel=''; taskPage=1; drawTasks(); return; }
+    if (action === 'filter-tasks') { filter = button.dataset.filter; taskPage=1; drawTasks(); return; }
+    if (action === 'task-page') { taskPage=Number(button.dataset.page); await drawFiltered(); $('#task-table').scrollIntoView({block:'start'}); return; }
+    if (action === 'settings-section') { $('#settings-section-'+button.dataset.section)?.scrollIntoView({block:'start'}); return; }
+    if (action === 'check-channel') { button.disabled=true; try { await api('/channels/'+id+'/check','POST'); toast('已安排频道检查，服务将在下一轮调度执行'); await drawChannels(); } finally {button.disabled=false;} return; }
     if (action === 'refresh-tasks') {
       button.disabled = true;
       try { await refresh(); toast('队列已更新'); }
@@ -828,18 +861,26 @@ document.addEventListener('submit', async e => {
 document.addEventListener('input', e => {
   if (e.target.id === 'task-search') {
     query = e.target.value;
-    drawFiltered();
+    taskPage=1;
+    clearTimeout(searchTimer);
+    searchTimer=setTimeout(()=>drawFiltered().catch(e=>toast(e.message)),250);
   }
 });
 
 document.addEventListener('change', e => {
   if (e.target.id === 'task-filter') {
     filter = e.target.value;
-    drawFiltered();
+    taskPage=1; drawFiltered().catch(e=>toast(e.message));
+  }
+  if (e.target.id === 'task-channel' || e.target.id === 'task-sort') {
+    if (e.target.id === 'task-channel') taskChannel=e.target.value;
+    else taskSort=e.target.value;
+    taskPage=1; drawFiltered().catch(e=>toast(e.message));
   }
 });
 
 window.addEventListener('hashchange', () => navigate().catch(e => toast(e.message)));
+window.addEventListener('beforeunload',e=>{if(settingsDirty){e.preventDefault();e.returnValue='';}});
 
 async function init() {
   try {
@@ -856,12 +897,13 @@ async function init() {
 }
 
 setInterval(() => {
-  if (!$('#shell').hidden) {
+  if (!$('#shell').hidden && !document.hidden && !refreshing) {
+    refreshing=true;
     refresh().catch(() => {
       const connText = $('#connection .conn-text');
       if (connText) connText.textContent = '连接中断 · 正在重连';
       else $('#connection').textContent = '连接中断 · 正在重连';
-    });
+    }).finally(()=>{refreshing=false;});
   }
 }, 8000);
 

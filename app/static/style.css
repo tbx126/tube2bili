@@ -1961,3 +1961,58 @@ dialog::backdrop {
     scroll-behavior: auto !important;
   }
 }
+/* Operational dashboard: compact rhythm, stable controls, explicit recovery. */
+main { max-width: 1440px; margin: 0 auto; width: 100%; }
+.page-head { margin-bottom: 24px; }
+.page-head h1 { font-size: clamp(26px, 3vw, 34px); letter-spacing: -.035em; }
+.metrics { gap: 16px; margin-bottom: 24px; }
+.metric { padding: 20px; }
+.metric .value { font-variant-numeric: tabular-nums; }
+.system-status { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; padding: 14px 18px; margin: 0 0 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); font-size: 13px; }
+.system-status > span:not(.live-dot) { color: var(--muted); }
+.system-status > a { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.cooldown-chip { border: 1px solid var(--amber-border); background: var(--amber-bg); color: var(--amber) !important; border-radius: 6px; padding: 4px 8px; }
+.queue-panel .toolbar { display: flex; flex-wrap: wrap; gap: 14px; align-items: end; padding: 20px; }
+.search-field { flex: 2 1 250px; }
+.filter-field { flex: 1 1 145px; min-width: 0; }
+.toolbar input, .toolbar select { width: 100%; min-height: 42px; }
+.task-card { padding: 18px 20px; }
+.task-card-header { gap: 16px; }
+.task-cover { width: 38px; height: 38px; flex: 0 0 38px; border-radius: 10px; }
+.task-title { font-size: 15px; line-height: 1.55; }
+.task-card-identity { min-width: 0; }
+.task-actions { flex-wrap: wrap; gap: 6px; }
+.task-actions button { min-height: 34px; padding: 7px 11px; font-size: 12px; }
+.task-progress-block { margin-top: 12px; padding: 10px 12px; }
+.task-error { margin-top: 10px; border-radius: 8px; }
+.retry-info { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+.retry-info > svg { flex-shrink: 0; }
+.retry-info a { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+.pagination { display: flex; justify-content: center; align-items: center; gap: 20px; padding: 20px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.pagination button { min-height: 40px; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#toast { max-width: min(520px, calc(100vw - 32px)); }
+.notice { white-space: pre-line; overflow-wrap: anywhere; }
+.channel-card { padding: 22px; }
+.channel-card h2 { font-size: 18px; }
+.channel-url { overflow-wrap: anywhere; }
+@media (max-width: 900px) { .task-card-header { flex-direction: column; align-items: stretch; } .task-actions { padding-left: 52px; } }
+@media (max-width: 600px) { .task-card { padding: 16px; } .task-actions { padding-left: 0; } .task-actions button { min-height: 42px; } .system-status > a { margin-left: 0; } .queue-panel .toolbar { padding: 16px; } .pagination { gap: 12px; padding: 16px; } }
+.settings-nav { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 20px; }
+.settings-nav button { padding:9px 13px; min-height:40px; font-size:12px; }
+.settings-layout > section { scroll-margin-top:80px; }
+.channel-schedule { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; padding:12px 0; font-size:12px; color:var(--muted); }
+.system-status .live-dot { margin-left:0; }
+@media (max-width:600px) {
+ aside nav { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:4px; width:100%; }
+ aside nav a { display:flex; flex-direction:column; justify-content:center; gap:6px; padding:10px 2px; min-height:62px; white-space:nowrap; font-size:11px; }
+ aside nav .nav-count { display:none; }
+ .breadcrumb { white-space:nowrap; flex-shrink:0; font-size:11px; }
+ .header-right { min-width:0; margin-left:10px; }
+ .header-right .avatar { display:none; }
+ .connection { max-width:185px; font-size:10px; padding:6px 9px; }
+ .conn-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+ .task-title-row { flex-wrap:wrap; }
+ .task-title { white-space:normal; }
+}
+.worker-offline .live-dot, .worker-offline .conn-dot { background:var(--muted); box-shadow:none; }
