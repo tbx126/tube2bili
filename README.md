@@ -129,6 +129,8 @@ python -m pytest -q
 
 ## 参考
 
+NAS 多网卡导致 Cloudflare Tunnel 回源超时的诊断、持久化修正和回滚见 [NAS 路由说明](docs/NAS_ROUTING.md)。
+
 千问接口、配置示例、候选版验证范围见 [千问接入说明](docs/QWEN.md)。
 
 - [yt-dlp 项目文档](https://github.com/yt-dlp/yt-dlp)

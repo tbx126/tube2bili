@@ -1,5 +1,12 @@
 # 验收记录
 
+## NAS Cloudflare 回源路由修正（2026-10-04）
+
+- NAS 源地址策略表 11 仅有 LAN 和默认路由，映射端口 DNAT 后的容器流量被错误发往网关。新增仅针对 Tube2Bili Docker 网段的优先级 9 主表规则；保留已有出口和 SSH 配置。
+- NAS 安装 `tube2bili-routing.service` 与 timer，开机及每分钟读取容器实际网段，恢复缺失规则。重复运行无重复规则；删除规则后启动服务成功补回。服务 Result=success，timer 已启用；没有重启 NAS，实际开机恢复尚未经过重启验证。
+- 内网健康检查、公网 `https://tube2bili.tbx12.com/healthz` 与首页均返回 HTTP 200；新建 `ssh.tbx12.com` 连接成功，近期 Tunnel 日志没有新的回源错误。
+- 新增 iproute JSON 网段格式回归测试通过，Python 语法和差异格式检查通过。安装及回滚说明见 [NAS_ROUTING.md](docs/NAS_ROUTING.md)。
+
 ## 0.2.0-rc.31 工作台与重试逻辑（2026-10-04）
 
 - 完整测试 110 项通过，新增覆盖超过 300 条记录的分页、筛选与统计、共享冷却、重试次数上限、频道手动检查及简介中的标题姓名证据。
