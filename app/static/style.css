@@ -1976,16 +1976,39 @@ main { max-width: 1440px; margin: 0 auto; width: 100%; }
 .search-field { flex: 2 1 250px; }
 .filter-field { flex: 1 1 145px; min-width: 0; }
 .toolbar input, .toolbar select { width: 100%; min-height: 42px; }
-.task-card { padding: 18px 20px; }
-.task-card-header { gap: 16px; }
+.task-card { padding: 18px 20px; gap: 14px; border-left-width: 3px; border-radius: 12px; }
+.task-card:hover { transform: none; }
+.task-card-header { gap: 0; }
 .task-cover { width: 38px; height: 38px; flex: 0 0 38px; border-radius: 10px; }
-.task-title { font-size: 15px; line-height: 1.55; }
 .task-card-identity { min-width: 0; }
-.task-actions { flex-wrap: wrap; gap: 6px; }
+.task-title-row { display: grid; gap: 9px; }
+.task-title { justify-content: flex-start; font-size: 16px; font-weight: 600; line-height: 1.55; }
+.task-title-area { gap: 10px; }
+.task-status-badges { gap: 8px; }
+.task-meta { gap: 8px 16px; font-size: 11px; }
+.task-meta .meta-item { max-width: 100%; overflow-wrap: anywhere; }
+.task-card-footer { display: flex; align-items: center; gap: 20px; border-top: 1px solid var(--line); padding-top: 12px; }
+.task-card-footer .task-progress-block { flex: 1; min-width: 0; margin: 0; padding: 0; border: 0; background: none; gap: 7px; }
+.task-card-footer .stage-label { font-size: 12px; line-height: 1.5; }
+.task-card-footer .progress { height: 4px; }
+.task-card.state-running .progress i,
+.task-card.state-queued .progress i { background: var(--blue); }
+.task-card.state-waiting .progress i,
+.task-card.state-retrying .progress i,
+.task-card.state-reconcile .progress i { background: var(--amber); }
+.task-card.state-failed .progress i { background: var(--danger); }
+.task-card.state-paused .progress i,
+.task-card.state-cancelled .progress i { background: var(--muted); }
+.task-card.state-completed .task-progress-block .progress,
+.task-card.state-completed .stage-percentage { display: none; }
+.task-card.state-completed .stage-label { color: var(--muted); }
+.task-actions { flex-wrap: wrap; gap: 6px; padding-left: 0; }
 .task-actions button { min-height: 34px; padding: 7px 11px; font-size: 12px; }
+.task-actions .delete-record { width: 34px; padding: 0; border-color: transparent; color: var(--muted); background: transparent; }
+.task-actions .delete-record:hover:not(:disabled) { color: var(--danger); background: var(--danger-bg); border-color: var(--danger-border); }
 .task-progress-block { margin-top: 12px; padding: 10px 12px; }
-.task-error { margin-top: 10px; border-radius: 8px; }
-.retry-info { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+.task-error { margin-top: 0; border-radius: 8px; }
+.retry-info { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 0; font-size: 12px; color: var(--muted); }
 .retry-info > svg { flex-shrink: 0; }
 .retry-info a { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
 .pagination { display: flex; justify-content: center; align-items: center; gap: 20px; padding: 20px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
@@ -1996,8 +2019,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .channel-card { padding: 22px; }
 .channel-card h2 { font-size: 18px; }
 .channel-url { overflow-wrap: anywhere; }
-@media (max-width: 900px) { .task-card-header { flex-direction: column; align-items: stretch; } .task-actions { padding-left: 52px; } }
-@media (max-width: 600px) { .task-card { padding: 16px; } .task-actions { padding-left: 0; } .task-actions button { min-height: 42px; } .system-status > a { margin-left: 0; } .queue-panel .toolbar { padding: 16px; } .pagination { gap: 12px; padding: 16px; } }
+@media (max-width: 900px) { .task-card-header { flex-direction: column; align-items: stretch; } .task-actions { padding-left: 0; } }
+@media (max-width: 600px) { .task-card { padding: 14px; } .task-list { padding: 10px; gap: 10px; } .task-cover { display: none; } .task-title { font-size: 15px; } .task-card-footer { flex-direction: column; align-items: stretch; gap: 12px; } .task-actions { justify-content: flex-end; } .task-actions button { min-height: 42px; } .task-actions .delete-record { width: 42px; } .system-status > a { margin-left: 0; } .queue-panel .toolbar { padding: 16px; } .pagination { gap: 12px; padding: 16px; } }
 .settings-nav { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 20px; }
 .settings-nav button { padding:9px 13px; min-height:40px; font-size:12px; }
 .settings-layout > section { scroll-margin-top:80px; }

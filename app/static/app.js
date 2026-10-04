@@ -133,15 +133,10 @@ function taskTable(tasks) {
             </div>
           </div>
         </div>
-        <div class="task-actions">
-          ${['waiting','paused','failed'].includes(t.status) && !t.assets_deleted ? `<button class="primary" data-action="task-action" data-id="${t.id}" data-command="resume">${icons.play}<span>${t.status==='paused'?'继续':'重新尝试'}</span></button>` : ''}
-          ${t.status === 'retrying' ? `<button class="ghost" data-action="task-action" data-id="${t.id}" data-command="pause">${icons.pause}<span>暂停重试</span></button>` : ''}
-          ${t.status === 'running' && t.stage !== 'publish' ? `<button class="ghost" data-action="task-action" data-id="${t.id}" data-command="pause">${icons.pause}<span>暂停</span></button>` : ''}
-          <button class="ghost" data-action="detail" data-id="${t.id}">查看详情</button>
-          <button class="ghost danger" data-action="delete-task" data-id="${t.id}" ${['running','reconcile'].includes(t.status)?'disabled title="请先停止执行或核对投稿"':''}>${icons.trash}<span>删除记录</span></button>
-        </div>
+
       </div>
 
+      <div class="task-card-footer">
       <div class="task-progress-block">
         <div class="task-progress-head">
           <span class="stage-label">
@@ -152,6 +147,14 @@ function taskTable(tasks) {
         </div>
         <div class="progress" role="progressbar" aria-label="任务进度" aria-valuenow="${Math.round(t.progress)}" aria-valuemin="0" aria-valuemax="100">
           <i style="width:${t.progress}%"></i>
+        </div>
+      </div>
+        <div class="task-actions">
+          ${['waiting','paused','failed'].includes(t.status) && !t.assets_deleted ? `<button class="primary" data-action="task-action" data-id="${t.id}" data-command="resume">${icons.play}<span>${t.status==='paused'?'继续':'重新尝试'}</span></button>` : ''}
+          ${t.status === 'retrying' ? `<button class="ghost" data-action="task-action" data-id="${t.id}" data-command="pause">${icons.pause}<span>暂停重试</span></button>` : ''}
+          ${t.status === 'running' && t.stage !== 'publish' ? `<button class="ghost" data-action="task-action" data-id="${t.id}" data-command="pause">${icons.pause}<span>暂停</span></button>` : ''}
+          <button class="ghost" data-action="detail" data-id="${t.id}">查看详情</button>
+          <button class="ghost danger delete-record" aria-label="删除记录" title="删除队列记录，保留本地文件" data-action="delete-task" data-id="${t.id}" ${['running','reconcile'].includes(t.status)?'disabled':''}>${icons.trash}</button>
         </div>
       </div>
 
