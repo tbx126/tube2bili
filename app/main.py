@@ -9,18 +9,19 @@ import shutil
 import sys
 import time
 import uuid
+import httpx
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 
-from . import config, store, worker
-from .media import youtube_url
+from . import accounts, config, store, worker, dashboard
+from .media import Waiting, is_netscape_cookie_file, youtube_url
 
 load_dotenv()
 ROOT = Path(__file__).resolve().parent
@@ -30,8 +31,9 @@ LOGIN_FAILURES = {}
 @asynccontextmanager
 async def lifespan(app):
     password = os.environ.get('DASHBOARD_PASSWORD', '')
-    if len(password) < 12:
+    if password and len(password) < 12:
         raise RuntimeError('请设置至少 12 位的 DASHBOARD_PASSWORD（.env 文件）')
+    app.state.auth_required = bool(password)
     store.init()
     secret_file = store.DATA / 'session.key'
     if not secret_file.exists():
@@ -56,6 +58,8 @@ def signed(value):
 
 
 def authenticated(request):
+    if not app.state.auth_required:
+        return True
     token = request.cookies.get('tube_session', '')
     try:
         expiry, nonce, signature = token.split('.')
@@ -67,15 +71,19 @@ def authenticated(request):
 @app.middleware('http')
 async def guard(request: Request, call_next):
     if request.url.path.startswith('/api/'):
-        if request.method not in ('GET', 'HEAD') and request.headers.get('X-Requested-With') != 'Tube2Bili':
+        if (request.method not in ('GET', 'HEAD')
+                and request.url.path != '/api/youtube/extension-sync'
+                and request.headers.get('X-Requested-With') != 'Tube2Bili'):
             return JSONResponse({'detail': '请求来源无效'}, status_code=403)
-        if request.url.path != '/api/login' and not authenticated(request):
+        if request.url.path not in ('/api/login', '/api/youtube/extension-sync') and not authenticated(request):
             return JSONResponse({'detail': '请先登录'}, status_code=401)
     response = await call_next(request)
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['Referrer-Policy'] = 'no-referrer'
     response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'"
+    if request.url.path.startswith('/static/'):
+        response.headers['Cache-Control'] = 'no-cache'
     if request.url.path.startswith('/api/'):
         response.headers['Cache-Control'] = 'no-store'
     return response
@@ -97,6 +105,8 @@ class Login(BaseModel):
 
 @app.post('/api/login')
 def login(value: Login, request: Request, response: Response):
+    if not app.state.auth_required:
+        return {'ok': True}
     peer = request.client.host if request.client else 'unknown'
     failures = [x for x in LOGIN_FAILURES.get(peer, []) if x > time.time() - 900]
     if len(failures) >= 8:
@@ -125,20 +135,45 @@ def health():
 
 @app.get('/api/overview')
 def overview():
-    tasks = store.rows('SELECT * FROM tasks ORDER BY created DESC LIMIT 300')
-    for task in tasks:
-        payload = json.loads(task.pop('payload'))
-        task['bvid'] = payload.get('bvid')
-        task['elapsed_seconds'] = payload.get('elapsed_seconds', 0)
-        task['assets_deleted'] = payload.get('assets_deleted', False)
+    holds = dashboard.cooldowns()
+    tasks = [dashboard.task_view(t, holds) for t in store.rows("SELECT t.*,c.name channel_name FROM tasks t LEFT JOIN channels c ON c.id=t.channel_id WHERE t.deleted=0 ORDER BY CASE WHEN t.status IN ('running','waiting','failed','reconcile','retrying','queued') THEN 0 ELSE 1 END,t.created DESC LIMIT 12")]
     disk = shutil.disk_usage(store.DATA)
-    stats = store.rows("SELECT COUNT(*) total, SUM(status='completed') completed, SUM(status IN ('waiting','failed','reconcile')) attention FROM tasks")[0]
+    stats = dashboard.stats()
     usage = store.rows('SELECT COALESCE(SUM(cost),0) cost, COALESCE(SUM(tokens),0) tokens FROM usage')[0]
-    daily = store.rows("SELECT date(created,'unixepoch') day, COUNT(*) count FROM tasks WHERE created>? GROUP BY day", (time.time() - 7 * 86400,))
+    daily = store.rows("SELECT date(created,'unixepoch','+8 hours') day, COUNT(*) count FROM tasks WHERE deleted=0 AND date(created,'unixepoch','+8 hours')>=date('now','+8 hours','-6 days') GROUP BY day")
     return {'tasks': tasks, 'stats': stats, 'usage': usage, 'daily': daily,
             'disk': {'total': disk.total, 'free': disk.free},
             'notices': store.rows('SELECT * FROM notices ORDER BY id DESC LIMIT 20'),
-            'worker_enabled': os.environ.get('DISABLE_WORKER') != '1'}
+            'worker_enabled': os.environ.get('DISABLE_WORKER') != '1',
+            'auth_required': app.state.auth_required, 'cooldowns': holds, 'server_time': time.time(),
+            'timezone': 'Asia/Shanghai'}
+
+
+@app.get('/api/tasks')
+def list_tasks(page: int = Query(1, ge=1), size: int = Query(12, ge=1, le=50),
+               status: str = Query('', max_length=30), search: str = Query('', max_length=200),
+               channel: str = Query('', max_length=64), sort: str = Query('newest', pattern='^(newest|oldest|updated)$')):
+    where, args = ['t.deleted=0'], []
+    groups = {'active': ['queued', 'running', 'retrying'], 'attention': ['waiting', 'failed', 'reconcile']}
+    if status:
+        statuses = groups.get(status, [status])
+        where.append('t.status IN (' + ','.join('?' for _ in statuses) + ')')
+        args.extend(statuses)
+    if search.strip():
+        where.append("(t.title LIKE ? ESCAPE '\\' OR t.video_id LIKE ? ESCAPE '\\' OR c.name LIKE ? ESCAPE '\\')")
+        term = '%' + search.strip().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
+        args.extend([term] * 3)
+    if channel:
+        where.append('t.channel_id=?' if channel != 'manual' else 't.channel_id IS NULL')
+        if channel != 'manual': args.append(channel)
+    base = ' FROM tasks t LEFT JOIN channels c ON c.id=t.channel_id WHERE ' + ' AND '.join(where)
+    total = store.rows('SELECT COUNT(*) n' + base, args)[0]['n']
+    pages = max(1, (total + size - 1) // size)
+    page = min(page, pages)
+    order = {'newest': 't.created DESC,t.id', 'oldest': 't.created,t.id', 'updated': 't.updated DESC,t.id'}[sort]
+    holds = dashboard.cooldowns()
+    rows = store.rows('SELECT t.*,c.name channel_name' + base + ' ORDER BY ' + order + ' LIMIT ? OFFSET ?', args + [size, (page-1)*size])
+    return {'tasks': [dashboard.task_view(t, holds) for t in rows], 'total': total, 'page': page, 'pages': pages, 'size': size}
 
 
 class NewTask(BaseModel):
@@ -151,7 +186,25 @@ def create_task(value: NewTask):
         video_id, url = youtube_url(value.url)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
-    return {'id': store.enqueue(video_id, url, options=config.get().posting.model_dump())}
+    task_id = store.enqueue(video_id, url, options=config.get().posting.model_dump())
+    store.execute('UPDATE tasks SET deleted=0 WHERE id=?', (task_id,))
+    return {'id': task_id}
+
+
+@app.delete('/api/tasks/{task_id}')
+def delete_task(task_id: str):
+    # Keep the deduplication/publication receipt and media. Serialize with scheduler.
+    with worker.ACTIVE_LOCK, store.connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        task = db.execute('SELECT status,payload FROM tasks WHERE id=?', (task_id,)).fetchone()
+        if not task:
+            raise HTTPException(404, '任务不存在')
+        payload = json.loads(task['payload'])
+        if task_id in worker.ACTIVE or task['status'] in ('running', 'reconcile') or (payload.get('publication_started') and not payload.get('bvid')):
+            raise HTTPException(409, '任务正在执行或投稿结果待核对，请先暂停并等待停止，或核对投稿')
+        db.execute("UPDATE tasks SET deleted=1, status=CASE WHEN status='completed' THEN status ELSE 'cancelled' END, updated=? WHERE id=?", (time.time(), task_id))
+    store.event(task_id, '用户删除队列记录；保留本地文件、费用和投稿去重信息')
+    return {'ok': True}
 
 
 @app.get('/api/tasks/{task_id}')
@@ -169,9 +222,36 @@ class Action(BaseModel):
     bvid: str = ''
 
 
+class CollectionTarget(BaseModel):
+    season_id: int = Field(gt=0)
+    section_id: int = Field(0, ge=0)
+
+
+@app.put('/api/tasks/{task_id}/collection')
+def task_collection(task_id: str, value: CollectionTarget):
+    with worker.ACTIVE_LOCK:
+        task = store.task(task_id)
+        if task_id in worker.ACTIVE or task['status'] not in ('completed', 'waiting', 'failed', 'paused') or task['deleted']:
+            raise HTTPException(409, '请先暂停任务，再设置合集')
+        payload = task['payload']
+        if not payload.get('bvid') or payload.get('assets_deleted'):
+            raise HTTPException(409, '需要已投稿且保留本地处理文件的任务')
+        if task['status'] != 'completed' and task['stage'] != 'collection':
+            raise HTTPException(409, '请先完成视频与字幕步骤')
+        receipt = store.DATA / 'media' / task_id / 'collection-receipt.json'
+        if receipt.exists() and json.loads(receipt.read_text('utf-8')).get('target') != value.model_dump():
+            raise HTTPException(409, '该任务已加入其他目标；请到 B 站手动调整合集')
+        payload['collection_target'] = value.model_dump()
+        store.update(task_id, payload=payload, stage='collection', status='queued', attempts=0, next_run=0, error='')
+        store.event(task_id, '用户设置目标合集，排队执行加入步骤')
+    return {'ok': True}
+
+
 @app.post('/api/tasks/{task_id}/action')
 def task_action(task_id: str, value: Action):
     task = store.task(task_id)
+    if task['deleted']:
+        raise HTTPException(409, '记录已删除；重新添加原视频链接可找回记录')
     with worker.ACTIVE_LOCK:
         active = task_id in worker.ACTIVE or task['status'] == 'running'
         if value.action in ('pause', 'cancel'):
@@ -183,7 +263,11 @@ def task_action(task_id: str, value: Action):
         elif value.action in ('resume', 'retry'):
             if active or task['status'] in ('completed', 'reconcile') or task['payload'].get('assets_deleted'):
                 raise HTTPException(409, '当前任务不能直接重试；请先核对状态')
-            store.update(task_id, status='queued', attempts=0, next_run=0, error='')
+            holds = [h['until'] for h in dashboard.cooldowns() if task['stage'] in h['stages']]
+            until = max(holds, default=0)
+            store.update(task_id, status='retrying' if until else 'queued',
+                         attempts=task['attempts'] if task['status'] == 'retrying' else 0,
+                         next_run=until, error='服务冷却中，到期自动继续' if until else '')
         elif value.action == 'link':
             if active or task['status'] != 'reconcile' or not re.fullmatch(r'BV[0-9A-Za-z]{10}', value.bvid):
                 raise HTTPException(409, '仅可为待核对任务填写有效 BV 号')
@@ -204,7 +288,7 @@ def task_action(task_id: str, value: Action):
     return {'ok': True}
 
 
-FILES = {'source.mp4', 'source.jpg', 'en.srt', 'zh.srt', 'bilingual.srt', 'posting.json'}
+FILES = {'source.mp4', 'source.jpg', 'en.srt', 'zh.srt', 'bilingual.srt', 'bilingual.ass', 'posting.json'}
 
 
 @app.get('/api/tasks/{task_id}/files/{name}')
@@ -244,12 +328,38 @@ class Channel(BaseModel):
     options: config.Posting = Field(default_factory=config.Posting)
 
 
+@app.get('/api/bilibili/collections')
+def bili_collections():
+    from .collections import list_collections
+    try:
+        return list_collections()
+    except Waiting as exc:
+        raise HTTPException(422, str(exc))
+    except Exception:
+        raise HTTPException(502, '无法读取 B 站合集，请检查网络与账号权限')
+
+
 @app.get('/api/channels')
 def channels():
     result = store.rows('SELECT * FROM channels ORDER BY created DESC')
+    holds = [h['until'] for h in dashboard.cooldowns() if 'download' in h['stages']]
+    interval = config.get().poll_minutes * 60
     for item in result:
         item['options'] = json.loads(item['options'])
+        item['next_check'] = max(item['last_poll'] + interval, max(holds, default=0)) if item['enabled'] else None
+        item['task_count'] = store.rows('SELECT COUNT(*) n FROM tasks WHERE deleted=0 AND channel_id=?', (item['id'],))[0]['n']
     return result
+
+
+@app.post('/api/channels/{channel_id}/check')
+def check_channel(channel_id: str):
+    found = store.rows('SELECT enabled FROM channels WHERE id=?', (channel_id,))
+    if not found: raise HTTPException(404, '频道不存在')
+    if not found[0]['enabled']: raise HTTPException(409, '请先恢复频道订阅')
+    holds = [h['until'] for h in dashboard.cooldowns() if 'download' in h['stages']]
+    if holds: raise HTTPException(409, 'YouTube 服务正在冷却，到期会自动检查，请勿重复请求')
+    store.execute('UPDATE channels SET last_poll=0 WHERE id=?', (channel_id,))
+    return {'ok': True}
 
 
 @app.post('/api/channels')
@@ -283,6 +393,8 @@ def settings():
     value = config.public()
     value['bilibili_configured'] = (store.DATA / 'cookies.json').exists()
     value['youtube_configured'] = (store.DATA / 'youtube-cookies.txt').exists()
+    value['youtube_pot_configured'] = bool(os.environ.get('POT_PROVIDER_URL'))
+    value['youtube_extension_paired'] = (store.DATA / 'youtube-extension-pair.json').exists()
     value['tools'] = {name: bool(shutil.which(name)) for name in ('ffmpeg', 'node', 'biliup')}
     value['tools']['biliup'] = value['tools']['biliup'] or Path(sys.executable).with_name('biliup.exe' if sys.platform == 'win32' else 'biliup').is_file()
     return value
@@ -290,15 +402,73 @@ def settings():
 
 @app.put('/api/settings')
 def update_settings(value: dict):
+    previous_proxy = config.get().proxy
     try:
         config.merge_public(value)
     except ValidationError:
         raise HTTPException(422, '配置格式不正确，请检查地址、模型和数值范围')
+    if previous_proxy != config.get().proxy:
+        worker.proxy_changed()
     return {'ok': True}
+
+
+@app.post('/api/routes/translation/{slot}/test')
+def translation_test(slot: str):
+    from .language import chat
+    if slot not in ('primary', 'fallback'):
+        raise HTTPException(404)
+    settings = config.get()
+    route = getattr(settings.translation, slot)
+    settings.translation = config.Routing(primary=route)
+    try:
+        result = chat(None, settings, 'Translate the text into Simplified Chinese. Return {"text":"translation"}.', {'text': 'Hello, world.'})
+        if not isinstance(result.get('text'), str) or not result['text'].strip():
+            raise ValueError()
+        return {'ok': True, 'text': result['text'][:200]}
+    except (Waiting, RuntimeError, ValueError):
+        raise HTTPException(422, '翻译测试失败，请检查 API Key、模型权限、地址和余额')
 
 
 class Credentials(BaseModel):
     content: str = Field(max_length=2_000_000)
+
+
+class ExtensionSync(BaseModel):
+    content: str = Field(max_length=2_000_000)
+    token: str = Field(default='', max_length=200)
+
+
+@app.post('/api/youtube/extension-pair')
+def youtube_extension_pair():
+    token = secrets.token_urlsafe(36)
+    path = store.DATA / 'youtube-extension-pair.json'
+    tmp = path.with_suffix('.tmp')
+    tmp.write_text(json.dumps({'sha256': hashlib.sha256(token.encode()).hexdigest(), 'created': time.time()}), 'utf-8')
+    os.chmod(tmp, 0o600)
+    tmp.replace(path)
+    return {'token': token, 'extension_path': 'app/static/edge-cookie-sync'}
+
+
+@app.post('/api/youtube/extension-sync')
+async def youtube_extension_sync(request: Request):
+    from .youtube import validate_cookie_session
+    if int(request.headers.get('content-length', 0) or 0) > 2_000_000:
+        raise HTTPException(413, 'Cookie 文件过大')
+    try:
+        value = ExtensionSync.model_validate(json.loads(await request.body()))
+    except (ValueError, ValidationError):
+        raise HTTPException(422, '同步内容格式错误')
+    pair_file = store.DATA / 'youtube-extension-pair.json'
+    stored = json.loads(pair_file.read_text('utf-8')) if pair_file.exists() else {}
+    presented = value.token
+    digest = hashlib.sha256(presented.encode()).hexdigest() if presented else ''
+    if not presented or not hmac.compare_digest(digest, stored.get('sha256', '')):
+        raise HTTPException(401, 'Edge 扩展尚未配对，请在 Dashboard 重新生成配对码')
+    try:
+        resumed = validate_cookie_session(value.content, config.get().proxy)
+    except (ValueError, httpx.HTTPError):
+        raise HTTPException(422, 'YouTube 未确认 Cookie 有效；NAS 保留原凭证，请重新登录后同步')
+    return {'ok': True, 'resumed': resumed}
 
 
 @app.put('/api/credentials/{provider}')
@@ -306,16 +476,16 @@ def credential_file(provider: str, value: Credentials):
     if provider == 'bilibili':
         try:
             data = json.loads(value.content)
-            jar = {x['name']: x['value'] for x in data['cookie_info']['cookies']}
-            if not all(jar.get(k) for k in ('SESSDATA', 'bili_jct', 'DedeUserID')):
-                raise ValueError()
+            accounts.validate_login(data)
         except (ValueError, KeyError, TypeError):
-            raise HTTPException(422, '需要 biliup 导出的 cookies.json，包含完整登录 Cookie')
+            raise HTTPException(422, '需要 biliup 导出的完整 cookies.json（Cookie、token_info、sso）；仅网页 Cookie 无法用于当前上传工具。也可直接扫码登录。')
         path = store.DATA / 'cookies.json'
     elif provider == 'youtube':
-        if 'Netscape HTTP Cookie File' not in value.content[:200]:
-            raise HTTPException(422, '需要 Netscape 格式的 cookies.txt')
-        path = store.DATA / 'youtube-cookies.txt'
+        from .youtube import import_cookie
+        try:
+            return {'ok': True, 'resumed': import_cookie(value.content)}
+        except ValueError as exc:
+            raise HTTPException(422, str(exc))
     else:
         raise HTTPException(404)
     tmp = path.with_suffix('.tmp')
@@ -332,6 +502,30 @@ def notification_test():
         raise HTTPException(422, '请先保存 Telegram 配置')
     store.notice('Tube2Bili：Telegram 测试通知')
     return {'ok': True}
+
+
+@app.post('/api/accounts/bilibili/qr')
+def bilibili_qr():
+    try:
+        return accounts.create()
+    except (httpx.HTTPError, ValueError, KeyError):
+        raise HTTPException(502, '无法生成 B 站二维码，请检查网络后重试')
+
+
+@app.post('/api/accounts/bilibili/qr/{session_id}')
+def bilibili_qr_poll(session_id: str):
+    try:
+        return accounts.poll(session_id)
+    except (httpx.HTTPError, ValueError, KeyError):
+        raise HTTPException(502, 'B 站登录查询失败，请稍后重试')
+
+
+@app.post('/api/accounts/bilibili/check')
+def bilibili_check():
+    try:
+        return accounts.status()
+    except (httpx.HTTPError, ValueError, KeyError, Waiting):
+        raise HTTPException(422, 'B 站凭证缺失、失效或网络不可用，请重新登录')
 
 
 app.mount('/static', StaticFiles(directory=ROOT / 'static'), name='static')

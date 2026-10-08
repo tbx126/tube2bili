@@ -13,10 +13,11 @@ def cookies():
     if not path.exists():
         raise Waiting('请先在设置中导入 biliup cookies.json 或在容器内扫码登录')
     value = json.loads(path.read_text('utf-8'))
-    jar = {entry['name']: entry['value'] for entry in value.get('cookie_info', {}).get('cookies', [])}
-    if not jar.get('SESSDATA') or not jar.get('bili_jct'):
-        raise Waiting('B 站登录文件缺少 SESSDATA 或 bili_jct')
-    return jar
+    from .accounts import validate_login
+    try:
+        return validate_login(value)
+    except (ValueError, KeyError, TypeError):
+        raise Waiting('B 站登录文件缺少完整上传凭据，请在设置页重新扫码登录')
 
 
 def publish(task, settings, folder):
@@ -30,9 +31,16 @@ def publish(task, settings, folder):
         return payload['bvid']
     if payload.get('publication_started'):
         raise Reconcile('上次投稿结果不明确；请到创作中心核对并填写 BV 号，避免重复发布')
+    from .title_review import review
+    from .bili_bridge import subtitle_data
+    try:
+        for filename in ('zh.srt', 'en.srt'):
+            subtitle_data(folder / filename)
+    except ValueError as exc:
+        raise Waiting('字幕含翻译注释或语言混杂，请修正后继续；尚未投稿') from exc
+    metadata = review(task, settings, folder)
     cookies()
     executable = shutil.which('biliup') or str(__import__('pathlib').Path(sys.executable).with_name('biliup.exe' if sys.platform == 'win32' else 'biliup'))
-    metadata = json.loads((folder / 'posting.json').read_text('utf-8'))
     options = {**settings.posting.model_dump(), **payload.get('options', {})}
     args = [executable, '-u', str(store.DATA / 'cookies.json'), 'upload', '--submit', 'web',
             '--copyright', '2', '--source', task['url'], '--tid', str(options['tid']),
@@ -66,6 +74,10 @@ def bridge(task, folder, action):
     result = json.loads((folder / f'{action}-result.json').read_text('utf-8'))
     if result.get('auth_error'):
         raise Waiting('B 站登录已失效，请更新凭证后继续任务')
+    if result.get('error_code') == 79011:
+        raise Waiting('B 站拒绝字幕语言参数（79011），请更新字幕接口配置后继续')
+    if result.get('error_code') == 79014:
+        raise Waiting('B 站字幕超过平台限制（79014）；任务已暂停，请修正过长字幕后继续，不会重复投稿')
     if not result.get('ok'):
         raise RuntimeError('B 站仍在处理或字幕接口暂不可用')
     return result

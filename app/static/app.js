@@ -2,8 +2,8 @@ const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pages = {today:'今天', tasks:'任务', channels:'频道', settings:'设置'};
 const states = {queued:'排队中', running:'处理中', waiting:'等待配置', paused:'已暂停', cancelled:'已取消', failed:'失败', retrying:'等待重试', reconcile:'需核对投稿', completed:'已完成'};
-const stageOrder = ['download', 'translate', 'publish', 'subtitles', 'verify'];
-const stageNames = {download:'下载', translate:'翻译字幕', publish:'投稿', subtitles:'提交字幕', verify:'确认可见'};
+const stageOrder = ['download', 'translate', 'publish', 'subtitles', 'verify', 'collection'];
+const stageNames = {download:'下载', translate:'翻译字幕', publish:'投稿', subtitles:'提交字幕', verify:'确认可见', collection:'归入合集'};
 const groups = {all:null, attention:['waiting','failed','reconcile'], active:['running','queued','retrying','paused'], completed:['completed']};
 const groupNames = {all:'全部', attention:'需处理', active:'进行中', completed:'已完成'};
 const ACTIVE = ['running','queued','retrying'];
@@ -29,7 +29,7 @@ const when = t => {
 };
 const bytes = n => n >= 1024**4 ? (n/1024**4).toFixed(1)+' TB' : n >= 1024**3 ? (n/1024**3).toFixed(1)+' GB' : (n/1024**2).toFixed(1)+' MB';
 const tag = s => `<span class="tag ${esc(s)}">${esc(states[s] || s)}</span>`;
-const source = t => t.channel_id ? '订阅抓取' : '手动导入';
+const source = t => t.channel_name || (t.channel_id ? '订阅抓取' : '手动导入');
 const inGroup = (g, s) => !groups[g] || groups[g].includes(s);
 const canResume = t => !['running','completed','reconcile'].includes(t.status) && !(t.assets_deleted || t.payload?.assets_deleted);
 
@@ -92,7 +92,7 @@ function drawToday() {
     health.push(['语音识别 API', !!s.transcription.primary.base_url, s.transcription.primary.base_url ? '已配置' : '未配置']);
     health.push(['Telegram 通知', s.telegram_configured && s.telegram_chat_id, s.telegram_configured && s.telegram_chat_id ? '已配置' : '未配置']);
   }
-  const bars = Array.from({length:7}, (_, i) => { const d = new Date(Date.now() - (6-i)*86400000); const day = d.toISOString().slice(0,10); return {label:'日一二三四五六'[d.getUTCDay()], count:daily.find(x => x.day === day)?.count || 0}; });
+  const bars = Array.from({length:7}, (_, i) => { const d = new Date(Date.now() + 8*3600000 - (6-i)*86400000); const day = d.toISOString().slice(0,10); return {label:'日一二三四五六'[d.getUTCDay()], count:daily.find(x => x.day === day)?.count || 0}; });
   const max = Math.max(1, ...bars.map(b => b.count));
   const used = disk.total ? (1 - disk.free/disk.total) * 100 : 0;
 
@@ -144,13 +144,14 @@ function drawDetail() {
     <form id="link-form" data-id="${id}"><label class="field">已发布，填写 BV 号<input name="bvid" class="mono" required pattern="BV[0-9A-Za-z]{10}" placeholder="BV1xxxxxxxxx" autocomplete="off"></label><button class="btn btn-dark" type="submit">关联并继续提交字幕</button></form>
     <div class="sep"><span>确认创作中心里没有这条稿件？</span><button class="btn btn-danger" data-action="reset-publication" data-id="${id}">确认未投稿，重新提交</button></div></div>`;
   else if (t.status === 'failed' || t.status === 'waiting') callout = `<div class="callout ${t.status === 'failed' ? 'failed' : ''}"><h3>${t.status === 'failed' ? '处理失败' : '等待配置或处理'} · ${stageNames[t.stage]}</h3>${t.error ? `<pre>${esc(t.error)}</pre>` : ''}<p>${t.status === 'failed' ? '修复原因后重试，会从当前步骤继续。' : '在设置中补全配置或登录凭证，然后点「继续」。'}</p><div class="row-actions">${canResume(t) ? `<button class="btn btn-dark" data-action="task-action" data-command="resume" data-id="${id}">${t.status === 'failed' ? '重试' : '继续'}</button>` : ''}<a class="btn" href="#settings">打开设置</a></div></div>`;
-  else if (t.status === 'completed') callout = `<div class="callout ok"><span style="color:var(--ok)">${icon.check}</span>已发布，播放器中可见「中英对照」与「英文」两条字幕。</div>`;
+  else if (t.status === 'completed') callout = `<div class="callout ok"><span style="color:var(--ok)">${icon.check}</span>已发布，播放器中可见「中文」与「英文」两条可关闭字幕。</div>`;
   else if (t.error) callout = `<div class="callout"><pre>${esc(t.error)}</pre></div>`;
 
   const actions = [];
   if (ACTIVE.includes(t.status) && !(t.status === 'running' && t.stage === 'publish')) actions.push(`<button class="btn" data-action="task-action" data-command="pause" data-id="${id}">暂停</button>`);
   if (['paused','cancelled'].includes(t.status) && canResume(t)) actions.push(`<button class="btn btn-dark" data-action="task-action" data-command="resume" data-id="${id}">继续</button>`);
   if (!['completed','cancelled'].includes(t.status) && !(t.status === 'running' && t.stage === 'publish')) actions.push(`<button class="btn btn-quiet" data-action="task-action" data-command="cancel" data-id="${id}">取消任务</button>`);
+  actions.push(`<button class="btn btn-quiet btn-danger" data-action="delete-record" data-id="${id}" ${['running','reconcile'].includes(t.status)?'disabled':''}>删除记录</button>`);
 
   $('#task-detail').innerHTML = `<div class="detail-head">${thumb(t, names.includes('source.jpg'))}<div>${tag(t.status)}<h2>${esc(t.title || t.video_id)}</h2><div class="meta">${source(t)} · <span class="mono">${esc(t.video_id)}</span> · ${Math.round(t.progress)}% · 累计处理 ${Math.round((p.elapsed_seconds || 0)/60)} 分钟</div>
     <div class="links"><a href="${esc(t.url)}" target="_blank" rel="noopener">YouTube 原视频 ${icon.out}</a>${p.bvid ? `<a href="https://www.bilibili.com/video/${esc(p.bvid)}" target="_blank" rel="noopener">B 站稿件 <span class="mono">${esc(p.bvid)}</span> ${icon.out}</a>` : ''}</div></div></div>
@@ -178,7 +179,7 @@ async function drawChannels() {
     return `<div class="ch-row ${c.enabled ? '' : 'paused'}"><div class="ch-name"><span class="avatar" aria-hidden="true">${esc(initial)}</span><div style="min-width:0"><strong class="ellipsis">${esc(c.name)}</strong><small class="ellipsis">${esc(c.url.replace(/^https?:\/\/(www\.)?/, ''))}</small></div></div>
       <div><span class="ch-state ${cls}"><span class="dot ${dot}"></span>${state}</span><div class="ch-note ${c.error && c.enabled ? 'fail' : ''}">${esc(note)}</div></div>
       <div class="mono" style="font-size:13px;color:var(--ink-2)">${c.last_poll ? when(c.last_poll) : '尚未检查'}</div>
-      <div style="font-size:13px;color:var(--ink-2)">分区 <span class="mono">${esc(o.tid)}</span><div class="ellipsis muted" style="font-size:12px">${esc(o.tags)}</div></div>
+      <div style="font-size:13px;color:var(--ink-2)">分区 <span class="mono">${esc(o.tid)}</span><div class="ellipsis muted" style="font-size:12px">${esc(o.tags)}</div><div class="muted" style="font-size:12px">${o.season_id ? `合集 #${esc(o.season_id)} · 分节 ${o.section_id ? '#'+esc(o.section_id) : '自动'}` : '不加入合集'}</div></div>
       <div class="ch-actions"><button class="btn btn-quiet" data-action="edit-channel" data-id="${esc(c.id)}">编辑</button><button class="btn" data-action="toggle-channel" data-id="${esc(c.id)}">${c.enabled ? '暂停' : '恢复'}</button></div></div>`;
   }).join('');
   $('#main').innerHTML = `<div class="page-head"><div><h1>频道</h1><p class="sub" style="max-width:640px">添加后先记录现有视频作为基线，之后只处理新发布的视频。Shorts 与直播默认排除。</p></div><button class="btn btn-dark" data-action="add" data-mode="channel">${icon.plus}订阅频道</button></div>
@@ -196,7 +197,8 @@ function routeCard(purpose, slot, route, enabled) {
     ? `<div class="two">${field('输入 ¥/百万 token', pre+'input_per_million', route.input_per_million, 'number', 'min="0" step="any"')}${field('输出 ¥/百万 token', pre+'output_per_million', route.output_per_million, 'number', 'min="0" step="any"')}</div>`
     : field('¥ / 音频分钟', pre+'per_minute', route.per_minute, 'number', 'min="0" step="any"', '0 表示未计价，预算无法约束');
   return `<div class="route ${!primary && !enabled ? 'off' : ''}"><div class="route-head"><strong>${primary ? '主服务' : '备用服务'}</strong>${status}</div>
-    ${field('服务名称', pre+'name', route.name)}${field('API 地址（含 /v1）', pre+'base_url', route.base_url, 'url', 'class="mono" placeholder="https://服务地址/v1"')}${field('模型', pre+'model', route.model, 'text', 'class="mono"')}
+    <label class="field">接口类型<select name="${pre}protocol">${(purpose==='translation'?[['openai','OpenAI 兼容'],['qwen','千问兼容接口']]:[['openai','OpenAI 音频接口'],['qwen_asr','千问异步识别'],['qwen_audio','千问音频直传']]).map(([v,n])=>`<option value="${v}" ${route.protocol===v?'selected':''}>${n}</option>`).join('')}</select></label>
+    ${field('服务名称', pre+'name', route.name)}${field('API 基础地址', pre+'base_url', route.base_url, 'url', 'class="mono" placeholder="https://服务地址/v1"')}${field('模型', pre+'model', route.model, 'text', 'class="mono"')}
     ${field('API Key', pre+'api_key', '', 'password', `autocomplete="new-password" placeholder="${route.key_configured ? '已配置 · 留空则保留' : '局域网无认证服务可不填'}"`)}${price}
     ${primary ? '' : `<label class="check"><input name="${purpose}.fallback_enabled" type="checkbox" ${enabled ? 'checked' : ''}>主服务失败时使用备用服务（可能产生额外费用）</label>`}</div>`;
 }
@@ -223,7 +225,7 @@ async function drawSettings() {
       <details><summary>用终端扫码登录 B 站</summary><pre>docker compose exec app biliup -u /data/cookies.json login</pre></details></section>
     ${['translation', 'transcription'].map(p => `<section id="${p}" class="card set ${p === 'transcription' && asrMissing ? 'attention' : ''}"><div class="set-head"><h2>${p === 'translation' ? '翻译服务' : '语音识别'}</h2><small>OpenAI 兼容 · ${p === 'translation' ? '/chat/completions' : '/audio/transcriptions'}</small></div>
       ${p === 'transcription' && asrMissing ? `<div class="note">${waitingAsr ? `有 ${waitingAsr} 个任务在等待配置。` : ''}没有英文字幕的视频需要语音识别。服务需返回 verbose_json 分段时间轴，音频每 10 分钟切一段上传。</div>` : `<p>${p === 'translation' ? '翻译字幕、标题与简介。按批次保存进度，中断后从断点继续。' : '没有英文字幕时使用。需返回 verbose_json 分段时间轴，音频每 10 分钟切一段上传。'}</p>`}
-      <div class="routes">${routeCard(p, 'primary', s[p].primary)}${routeCard(p, 'fallback', s[p].fallback, s[p].fallback_enabled)}</div></section>`).join('')}
+      <div class="routes">${routeCard(p, 'primary', s[p].primary)}${routeCard(p, 'fallback', s[p].fallback, s[p].fallback_enabled)}</div>${p==='translation'?`<label class="field">翻译背景与固定译法<textarea name="translation_notes" maxlength="12000" rows="5">${esc(s.translation_notes)}</textarea></label>`:''}</section>`).join('')}
     <section id="notify" class="card set"><h2>Telegram 通知</h2><p>任务完成、失败、需要核对或登录失效时通知你。</p><div class="grid-fields" style="align-items:end">
       ${field('Bot Token', 'telegram_token', '', 'password', `autocomplete="new-password" placeholder="${s.telegram_configured ? '已配置 · 留空则保留' : ''}"`)}${field('Chat ID', 'telegram_chat_id', s.telegram_chat_id, 'text', 'class="mono"')}
       <div><button type="button" class="btn" data-action="test-notification">发送测试通知</button></div></div><p class="hint" style="margin-top:10px">测试前请先保存设置。</p></section>
@@ -233,7 +235,7 @@ async function drawSettings() {
       ${field('磁盘最少可用（GB）', 'min_free_gb', s.min_free_gb, 'number', 'min="1" step="any"', '低于此值暂停下载')}
       ${field('每月费用上限（¥）', 'monthly_budget', s.monthly_budget, 'number', 'min="0" step="any"', '0 为不限；按单价估算，不是硬限额')}</div></section>
     <section id="posting" class="card set"><h2>投稿默认值</h2><p>手动导入的视频和新订阅的频道使用这些值；每个频道可单独修改。</p><div class="grid-fields">
-      ${field('分区 ID', 'posting.tid', s.posting.tid, 'number', 'min="1"')}${field('标签', 'posting.tags', s.posting.tags, 'text', '', '逗号分隔')}</div></section>
+      ${field('分区 ID', 'posting.tid', s.posting.tid, 'number', 'min="1"')}${field('标签', 'posting.tags', s.posting.tags, 'text', '', '逗号分隔')}${field('标题前缀', 'posting.title_prefix',s.posting.title_prefix,'text','maxlength="30"')}${field('合集 ID（0 表示不指定）', 'posting.season_id',s.posting.season_id,'number','min="0"')}${field('合集分节 ID', 'posting.section_id',s.posting.section_id,'number','min="0"')}</div></section>
     <div class="save-bar"><span id="save-state">修改后点击保存。</span><div class="row-actions"><button class="btn btn-quiet" type="button" data-action="reset-settings">放弃修改</button><button class="btn" type="submit">保存设置</button></div></div>
   </form></div>`;
 }
@@ -258,7 +260,7 @@ function drawDetect() {
   } else if (kind === 'channel') {
     if (box.dataset.kind !== 'channel') {
       const handle = (url.match(/@([^/?#]+)/) || [])[1] || '';
-      box.innerHTML = `<div class="detect"><span class="detect-kind">识别为频道</span>${field('频道名称', 'name', handle, 'text', 'required')}<div class="two">${field('投稿分区 ID', 'tid', posting.tid, 'number', 'min="1" required')}${field('标签', 'tags', posting.tags)}</div><p>首次检查只记录现有视频，<strong>不会搬运历史视频</strong>。之后发布的新视频自动进入队列。</p></div>`;
+      box.innerHTML = `<div class="detect"><span class="detect-kind">识别为频道</span>${field('频道名称', 'name', handle, 'text', 'required')}<div class="two">${field('投稿分区 ID', 'tid', posting.tid, 'number', 'min="1" required')}${field('标签', 'tags', posting.tags)}</div>${channelCollectionFields(posting)}<p>首次检查只记录现有视频，<strong>不会搬运历史视频</strong>。之后发布的新视频自动进入队列。</p></div>`;
     }
     submit.textContent = '开始订阅';
   } else {
@@ -267,9 +269,15 @@ function drawDetect() {
   }
   box.dataset.kind = kind;
 }
+function channelCollectionFields(o) {
+  return `<div class="two">${field('合集 ID', 'season_id', o.season_id || 0, 'number', 'min="0" step="1" required', '0 表示不加入合集')}${field('合集分节 ID', 'section_id', o.section_id || 0, 'number', 'min="0" step="1" required', '0 自动选择唯一分节；多个分节需填写 ID')}</div><p class="hint">每个频道独立设置，仅用于之后新入队的视频。已排队和已发布的视频保持原设置。</p>`;
+}
+function channelPostingOptions(data, defaults) {
+  return {...defaults, tid: Number(data.get('tid')), tags: data.get('tags'), season_id: Number(data.get('season_id')), section_id: Number(data.get('section_id'))};
+}
 function channelModal(c) {
   const o = c.options || {};
-  modal('编辑频道', `<form id="channel-form" data-id="${esc(c.id)}">${field('频道名称', 'name', c.name, 'text', 'required')}${field('YouTube 频道链接', 'url', c.url, 'url', 'readonly', '更换来源请新建订阅')}<div class="two">${field('投稿分区 ID', 'tid', o.tid, 'number', 'min="1" required')}${field('投稿标签', 'tags', o.tags)}</div><div class="modal-actions"><button class="btn btn-quiet" type="button" data-action="close">取消</button><button class="btn btn-dark" type="submit">保存</button></div></form>`);
+  modal('编辑频道', `<form id="channel-form" data-id="${esc(c.id)}">${field('频道名称', 'name', c.name, 'text', 'required')}${field('YouTube 频道链接', 'url', c.url, 'url', 'readonly', '更换来源请新建订阅')}<div class="two">${field('投稿分区 ID', 'tid', o.tid, 'number', 'min="1" required')}${field('投稿标签', 'tags', o.tags)}</div>${channelCollectionFields(o)}<div class="modal-actions"><button class="btn btn-quiet" type="button" data-action="close">取消</button><button class="btn btn-dark" type="submit">保存</button></div></form>`);
 }
 
 /* ---------- 路由与刷新 ---------- */
@@ -299,7 +307,10 @@ async function navigate() {
   if (changed) window.scrollTo(0, 0);
 }
 async function refresh(render = true) {
-  overview = await api('/overview');
+  const [next, first] = await Promise.all([api('/overview'),api('/tasks?size=50')]);
+  const tasks = [...first.tasks];
+  for(let p=2;p<=first.pages;p++) tasks.push(...(await api(`/tasks?size=50&page=${p}`)).tasks);
+  overview = {...next,tasks};
   const active = overview.tasks.filter(t => ACTIVE.includes(t.status)).length;
   const attention = overview.tasks.filter(t => groups.attention.includes(t.status)).length;
   const count = $('#queue-count');
@@ -329,6 +340,10 @@ document.addEventListener('click', async e => {
     if (action === 'filter') { filter = button.dataset.filter; drawTaskList(); return; }
     if (action === 'edit-channel') { channelModal(channelData.find(c => c.id === id)); return; }
     if (action === 'logout') { await api('/logout', 'POST'); $('#shell').hidden = true; $('#login').hidden = false; return; }
+    if (action === 'delete-record') {
+      if(!confirm('删除队列记录？本地文件、B 站稿件和投稿去重信息会保留，重新添加原链接可找回。')) return;
+      await api(`/tasks/${id}`,'DELETE'); taskId=null; detailData=null; location.hash='#tasks'; await refresh(); toast('记录已删除，本地文件已保留'); return;
+    }
     if (action === 'task-action') {
       const command = button.dataset.command;
       if (command === 'cancel' && !confirm('取消这个任务？已发布到 B 站的视频不会被撤回。')) return;
@@ -362,14 +377,14 @@ document.addEventListener('submit', async e => {
       if (!url) throw new Error('请先粘贴链接');
       if ($('#detect').dataset.kind === 'channel') {
         if (!form.reportValidity()) return;
-        await api('/channels', 'POST', {name: data.get('name'), url, enabled: true, options: {tid: Number(data.get('tid')), tags: data.get('tags')}});
+        await api('/channels', 'POST', {name: data.get('name'), url, enabled: true, options: channelPostingOptions(data, settingsData?.posting || {})});
         $('#modal').close(); toast('已订阅，首次检查会建立基线'); location.hash = '#channels'; if (page === 'channels') await drawChannels();
       } else {
         const result = await api('/tasks', 'POST', {url});
         $('#modal').close(); await refresh(false); toast('任务已进入队列'); location.hash = '#tasks/' + result.id;
       }
     }
-    if (form.id === 'channel-form') { const id = form.dataset.id, old = channelData.find(c => c.id === id); await api('/channels/'+id, 'PUT', {name: data.get('name'), url: data.get('url'), enabled: !!old.enabled, options: {tid: Number(data.get('tid')), tags: data.get('tags')}}); $('#modal').close(); await drawChannels(); toast('频道设置已保存'); }
+    if (form.id === 'channel-form') { if (!form.reportValidity()) return; const id = form.dataset.id, old = channelData.find(c => c.id === id); await api('/channels/'+id, 'PUT', {name: data.get('name'), url: data.get('url'), enabled: !!old.enabled, options: channelPostingOptions(data, old.options)}); $('#modal').close(); await drawChannels(); toast('频道设置已保存'); }
     if (form.id === 'settings-form') {
       if (!form.reportValidity()) return;
       const result = structuredClone(settingsData);
