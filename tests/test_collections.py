@@ -119,3 +119,30 @@ def test_account_with_no_collections_returns_empty_list(client, monkeypatch):
     response = client.get('/api/bilibili/collections')
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_channel_collection_settings_are_isolated_and_snapshotted(client):
+    values = [
+        {'name': 'first', 'url': 'https://www.youtube.com/@first',
+         'options': {'season_id': 12, 'section_id': 34, 'translation_notes': 'pin=牵制'}},
+        {'name': 'second', 'url': 'https://www.youtube.com/@second',
+         'options': {'season_id': 56, 'section_id': 78}},
+    ]
+    ids = [client.post('/api/channels', json=value).json()['id'] for value in values]
+    channels = [store.rows('SELECT * FROM channels WHERE id=?', (id,))[0] for id in ids]
+    for channel in channels:
+        worker.ingest(channel, [])
+    worker.ingest(channels[0], [{'id': 'aaaaaaaaaaa'}])
+    worker.ingest(channels[1], [{'id': 'bbbbbbbbbbb'}])
+    tasks = store.rows('SELECT * FROM tasks ORDER BY video_id')
+    assert [(json.loads(t['payload'])['options']['season_id'], json.loads(t['payload'])['options']['section_id'])
+            for t in tasks] == [(12, 34), (56, 78)]
+    values[0]['options'].update(season_id=90, section_id=91)
+    assert client.put('/api/channels/' + ids[0], json=values[0]).status_code == 200
+    worker.ingest(channels[0], [{'id': 'aaaaaaaaaaa'}, {'id': 'ccccccccccc'}])
+    old_options = store.task(tasks[0]['id'])['payload']['options']
+    new_options = json.loads(store.rows("SELECT * FROM tasks WHERE video_id='ccccccccccc'")[0]['payload'])['options']
+    assert old_options['season_id'] == 12
+    assert new_options['season_id'] == 90
+    assert new_options['section_id'] == 91
+    assert new_options['translation_notes'] == 'pin=牵制'

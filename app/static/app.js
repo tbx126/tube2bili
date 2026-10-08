@@ -179,7 +179,7 @@ async function drawChannels() {
     return `<div class="ch-row ${c.enabled ? '' : 'paused'}"><div class="ch-name"><span class="avatar" aria-hidden="true">${esc(initial)}</span><div style="min-width:0"><strong class="ellipsis">${esc(c.name)}</strong><small class="ellipsis">${esc(c.url.replace(/^https?:\/\/(www\.)?/, ''))}</small></div></div>
       <div><span class="ch-state ${cls}"><span class="dot ${dot}"></span>${state}</span><div class="ch-note ${c.error && c.enabled ? 'fail' : ''}">${esc(note)}</div></div>
       <div class="mono" style="font-size:13px;color:var(--ink-2)">${c.last_poll ? when(c.last_poll) : '尚未检查'}</div>
-      <div style="font-size:13px;color:var(--ink-2)">分区 <span class="mono">${esc(o.tid)}</span><div class="ellipsis muted" style="font-size:12px">${esc(o.tags)}</div></div>
+      <div style="font-size:13px;color:var(--ink-2)">分区 <span class="mono">${esc(o.tid)}</span><div class="ellipsis muted" style="font-size:12px">${esc(o.tags)}</div><div class="muted" style="font-size:12px">${o.season_id ? `合集 #${esc(o.season_id)} · 分节 ${o.section_id ? '#'+esc(o.section_id) : '自动'}` : '不加入合集'}</div></div>
       <div class="ch-actions"><button class="btn btn-quiet" data-action="edit-channel" data-id="${esc(c.id)}">编辑</button><button class="btn" data-action="toggle-channel" data-id="${esc(c.id)}">${c.enabled ? '暂停' : '恢复'}</button></div></div>`;
   }).join('');
   $('#main').innerHTML = `<div class="page-head"><div><h1>频道</h1><p class="sub" style="max-width:640px">添加后先记录现有视频作为基线，之后只处理新发布的视频。Shorts 与直播默认排除。</p></div><button class="btn btn-dark" data-action="add" data-mode="channel">${icon.plus}订阅频道</button></div>
@@ -260,7 +260,7 @@ function drawDetect() {
   } else if (kind === 'channel') {
     if (box.dataset.kind !== 'channel') {
       const handle = (url.match(/@([^/?#]+)/) || [])[1] || '';
-      box.innerHTML = `<div class="detect"><span class="detect-kind">识别为频道</span>${field('频道名称', 'name', handle, 'text', 'required')}<div class="two">${field('投稿分区 ID', 'tid', posting.tid, 'number', 'min="1" required')}${field('标签', 'tags', posting.tags)}</div><p>首次检查只记录现有视频，<strong>不会搬运历史视频</strong>。之后发布的新视频自动进入队列。</p></div>`;
+      box.innerHTML = `<div class="detect"><span class="detect-kind">识别为频道</span>${field('频道名称', 'name', handle, 'text', 'required')}<div class="two">${field('投稿分区 ID', 'tid', posting.tid, 'number', 'min="1" required')}${field('标签', 'tags', posting.tags)}</div>${channelCollectionFields(posting)}<p>首次检查只记录现有视频，<strong>不会搬运历史视频</strong>。之后发布的新视频自动进入队列。</p></div>`;
     }
     submit.textContent = '开始订阅';
   } else {
@@ -269,9 +269,15 @@ function drawDetect() {
   }
   box.dataset.kind = kind;
 }
+function channelCollectionFields(o) {
+  return `<div class="two">${field('合集 ID', 'season_id', o.season_id || 0, 'number', 'min="0" step="1" required', '0 表示不加入合集')}${field('合集分节 ID', 'section_id', o.section_id || 0, 'number', 'min="0" step="1" required', '0 自动选择唯一分节；多个分节需填写 ID')}</div><p class="hint">每个频道独立设置，仅用于之后新入队的视频。已排队和已发布的视频保持原设置。</p>`;
+}
+function channelPostingOptions(data, defaults) {
+  return {...defaults, tid: Number(data.get('tid')), tags: data.get('tags'), season_id: Number(data.get('season_id')), section_id: Number(data.get('section_id'))};
+}
 function channelModal(c) {
   const o = c.options || {};
-  modal('编辑频道', `<form id="channel-form" data-id="${esc(c.id)}">${field('频道名称', 'name', c.name, 'text', 'required')}${field('YouTube 频道链接', 'url', c.url, 'url', 'readonly', '更换来源请新建订阅')}<div class="two">${field('投稿分区 ID', 'tid', o.tid, 'number', 'min="1" required')}${field('投稿标签', 'tags', o.tags)}</div><div class="modal-actions"><button class="btn btn-quiet" type="button" data-action="close">取消</button><button class="btn btn-dark" type="submit">保存</button></div></form>`);
+  modal('编辑频道', `<form id="channel-form" data-id="${esc(c.id)}">${field('频道名称', 'name', c.name, 'text', 'required')}${field('YouTube 频道链接', 'url', c.url, 'url', 'readonly', '更换来源请新建订阅')}<div class="two">${field('投稿分区 ID', 'tid', o.tid, 'number', 'min="1" required')}${field('投稿标签', 'tags', o.tags)}</div>${channelCollectionFields(o)}<div class="modal-actions"><button class="btn btn-quiet" type="button" data-action="close">取消</button><button class="btn btn-dark" type="submit">保存</button></div></form>`);
 }
 
 /* ---------- 路由与刷新 ---------- */
@@ -371,14 +377,14 @@ document.addEventListener('submit', async e => {
       if (!url) throw new Error('请先粘贴链接');
       if ($('#detect').dataset.kind === 'channel') {
         if (!form.reportValidity()) return;
-        await api('/channels', 'POST', {name: data.get('name'), url, enabled: true, options: {...old.options, tid: Number(data.get('tid')), tags: data.get('tags')}});
+        await api('/channels', 'POST', {name: data.get('name'), url, enabled: true, options: channelPostingOptions(data, settingsData?.posting || {})});
         $('#modal').close(); toast('已订阅，首次检查会建立基线'); location.hash = '#channels'; if (page === 'channels') await drawChannels();
       } else {
         const result = await api('/tasks', 'POST', {url});
         $('#modal').close(); await refresh(false); toast('任务已进入队列'); location.hash = '#tasks/' + result.id;
       }
     }
-    if (form.id === 'channel-form') { const id = form.dataset.id, old = channelData.find(c => c.id === id); await api('/channels/'+id, 'PUT', {name: data.get('name'), url: data.get('url'), enabled: !!old.enabled, options: {...old.options, tid: Number(data.get('tid')), tags: data.get('tags')}}); $('#modal').close(); await drawChannels(); toast('频道设置已保存'); }
+    if (form.id === 'channel-form') { if (!form.reportValidity()) return; const id = form.dataset.id, old = channelData.find(c => c.id === id); await api('/channels/'+id, 'PUT', {name: data.get('name'), url: data.get('url'), enabled: !!old.enabled, options: channelPostingOptions(data, old.options)}); $('#modal').close(); await drawChannels(); toast('频道设置已保存'); }
     if (form.id === 'settings-form') {
       if (!form.reportValidity()) return;
       const result = structuredClone(settingsData);
