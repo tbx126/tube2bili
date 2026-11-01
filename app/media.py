@@ -45,7 +45,10 @@ class YouTubeError(RuntimeError):
 
 def youtube_error_kind(text):
     low = text.casefold()
-    errors = '\n'.join(line for line in low.splitlines() if 'error' in line)
+    # --dump-single-json can include thousands of video titles and counters.
+    # Only diagnostics are evidence of an HTTP error, never playlist metadata.
+    errors = '\n'.join(line for line in low.splitlines()
+                       if re.match(r'^\s*(?:error:|\[[^\]]+\]\s*error:)', line))
     if '416' in errors and ('range' in errors or 'http error 416' in errors):
         return 'range'
     if any(x in errors for x in ('429', 'too many requests', "this content isn't available, try again later")):

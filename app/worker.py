@@ -321,6 +321,24 @@ def ingest(channel, entries):
         db.execute("UPDATE channels SET initialized=1,last_poll=?,error='' WHERE id=?", (time.time(), channel['id']))
 
 
+def channel_entries(settings, channel, folder):
+    """Read the recent window; expand only until the previous baseline is found."""
+    for limit in (50, 100, 200, 400):
+        output = youtube_execute(settings, ['--flat-playlist', '--dump-single-json', '--skip-download',
+            '--playlist-end', str(limit), channel['url']], folder, timeout=180, stop_event=STOP)
+        entries = json.loads(output).get('entries')
+        if not isinstance(entries, list):
+            raise ValueError('Invalid channel response')
+        if not channel['initialized'] or len(entries) < limit:
+            return entries
+        ids = [entry.get('id', '') for entry in entries]
+        placeholders = ','.join('?' for _ in ids)
+        if store.rows(f'SELECT 1 FROM seen WHERE channel_id=? AND video_id IN ({placeholders}) LIMIT 1',
+                      (channel['id'], *ids)):
+            return entries
+    raise Waiting('频道近期 400 条视频仍未找到上次检查基线，请检查频道来源或手动补录更早的视频；未跳过未处理视频')
+
+
 def poll_channels():
     recover_network()
     settings = config.get()
@@ -334,11 +352,7 @@ def poll_channels():
         folder = store.DATA / 'poll' / channel['id']
         folder.mkdir(parents=True, exist_ok=True)
         try:
-            output = youtube_execute(settings, ['--flat-playlist', '--dump-single-json', '--skip-download', channel['url']], folder, timeout=900, stop_event=STOP)
-            value = json.loads(output)
-            if not isinstance(value.get('entries'), list):
-                raise ValueError()
-            ingest(channel, value['entries'])
+            ingest(channel, channel_entries(settings, channel, folder))
         except Stopped:
             return
         except Waiting as exc:

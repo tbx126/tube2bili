@@ -114,6 +114,8 @@ def test_range_failure_preserves_partial_and_retries_once(client, monkeypatch):
     assert next(folder.glob('partial-recovery-*/source.f299.mp4.part')).read_bytes() == b'partial'
     assert (folder / 'unrelated.part').read_bytes() == b'keep'
     assert media.youtube_error_kind('ERROR: HTTP Error 416: Requested range not satisfiable') == 'range'
+    assert media.youtube_error_kind('ERROR: API page: HTTP Error 500\n' + json.dumps(
+        {'title': 'error in chess', 'view_count': 429, 'description': 'sign in proxy ssl 403'})) == 'other'
 
 
 def load_script(name):
@@ -182,3 +184,32 @@ def test_audio_stream_billing_error_survives_context_close(client, monkeypatch):
     mock_http(monkeypatch, lambda request: httpx.Response(400, json={'code': 'Arrearage'}))
     with pytest.raises(provider_health.ProviderBlocked, match='欠费'):
         language.transcribe(store.task(task_id), settings, folder, 30)
+
+
+def test_channel_poll_is_bounded_and_expands_to_known_baseline(client, monkeypatch):
+    cid = client.post('/api/channels', json={'name': 'test', 'url': 'https://www.youtube.com/@test'}).json()['id']
+    channel = store.rows('SELECT * FROM channels WHERE id=?', (cid,))[0]
+    worker.ingest(channel, [{'id': 'abcdefghijk'}])
+    channel['initialized'] = 1
+    limits = []
+    def execute(settings, args, folder, **kwargs):
+        limit = int(args[args.index('--playlist-end') + 1])
+        limits.append(limit)
+        entries = [{'id': f'{i:011d}'} for i in range(limit)]
+        if limit == 100:
+            entries[-1] = {'id': 'abcdefghijk'}
+        return json.dumps({'entries': entries})
+    monkeypatch.setattr(worker, 'youtube_execute', execute)
+    entries = worker.channel_entries(config.Settings(), channel, store.DATA)
+    assert limits == [50, 100] and len(entries) == 100
+
+
+def test_channel_gap_never_silently_marks_unseen_videos_seen(client, monkeypatch):
+    channel = {'id': 'missing', 'initialized': 1, 'url': 'url'}
+    def execute(settings, args, folder, **kwargs):
+        limit = int(args[args.index('--playlist-end') + 1])
+        return json.dumps({'entries': [{'id': f'{i:011d}'} for i in range(limit)]})
+    monkeypatch.setattr(worker, 'youtube_execute', execute)
+    with pytest.raises(media.Waiting, match='400'):
+        worker.channel_entries(config.Settings(), channel, store.DATA)
+    assert not store.rows('SELECT * FROM seen')
