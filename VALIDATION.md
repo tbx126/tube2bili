@@ -3,8 +3,12 @@
 ## 0.2.0-rc.35 故障恢复（2026-11-01）
 
 - uv 管理项目独立 .venv，安装前核对 PyPI 依赖许可证；完整测试 122 项通过，涵盖欠费熔断/备用路由、语音识别流式错误、网络定向恢复、Telegram 消息保留、HTTP 416、订阅配置隔离和 Tunnel 重启限频。
-- NAS 新订阅候选独立实例实际请求 YouTube 204 后再替换，26 个节点可用配置、fallback 健康检查；没有修改订阅方配置的本地 DNS/TUN/控制器。
-- 公网 healthz 已恢复 HTTP 200，Telegram Bot getMe HTTP 200；网络监控与订阅更新 timers 已启用。
+- NAS 新订阅候选独立实例实际请求 YouTube 204 后再替换，26 个节点配置通过校验，启用 fallback 健康检查；没有修改订阅方配置的本地 DNS/TUN/控制器。
+- 公网 healthz 已恢复 HTTP 200，Telegram Bot getMe HTTP 200，恢复通知已实际发送（sent=1）；B 站登录检查 valid=true。网络监控与订阅更新 timers 已启用；从私有保存的 URL 实际更新成功，无变更时没有重启代理。
+- rc.35 / 164a247 应用容器 healthy，代理、Tunnel、应用健康监测均为 true。专用监控端口改为 42081，避开 NAS 原有进程占用的 20241。
+- qwen3.8-max 实际翻译测试成功；保留 qwen-audio-3.0-asr-flash，8 秒实际音频返回 2 段识别结果。密钥仅在 NAS 私有设置及备份中，不加入 Git。
+- 原 9 条失败任务已从检查点恢复入队，HTTP 416 的下载任务已重新产生有效下载进度；原有 68 条已完成记录保留。恢复后任务仍在后台处理，此记录不将排队状态视为发布完成。
+- GitHub CI https://github.com/tbx126/tube2bili/actions/runs/41310644592 通过。
 
 ## 0.2.0-rc.34 频道合集设置（2026-10-08）
 

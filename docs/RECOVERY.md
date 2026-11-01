@@ -4,9 +4,9 @@
 
 - 订阅地址保存在 NAS `/vol2/docker/mihomo-system/config/subscription.url`，权限 0600，不加入 Git。
 - `tube2bili-proxy-refresh.timer` 每天更新节点。只读取订阅中的节点，保留本机 DNS、TUN、内网规则和控制器凭据；排除流量/到期提示伪节点。
-- 更新前运行 Mihomo 配置检查，并使用独立监听器实际访问 YouTube；失败保留原配置。节点组使用 fallback，每 180 秒检查，自动切换存活节点。
+- 更新前运行 Mihomo 配置检查，并使用独立监听器实际访问 YouTube；失败保留原配置。订阅未变化时不重启代理。节点组使用 fallback，每 180 秒检查，自动切换存活节点。
 - Cloudflare 使用 HTTP/2，配置备份为 `/vol2/docker/cloudflared/compose.yaml.before-http2-20261101`。没有改动 Tunnel Token。
-- `tube2bili-network-watch.timer` 每分钟检查代理、Tunnel `/ready` 和应用；代理健康但 Tunnel 连续三次未就绪时重启 Tunnel，重启间隔至少 15 分钟。监控不保证上游节点、订阅余额或 ISP 永远可用。
+- `tube2bili-network-watch.timer` 每分钟检查代理、Tunnel `127.0.0.1:42081/ready` 和应用；此端口避开 NAS 已有 Cloudflare 进程。代理健康但 Tunnel 连续三次未就绪时重启 Tunnel，重启间隔至少 15 分钟。监控不保证上游节点、订阅余额或 ISP 永远可用。
 - 状态写入数据目录 `network-health.json`，Dashboard 显示网络异常或超过三分钟未更新。查看 `systemctl status tube2bili-network-watch.service`、`journalctl -u tube2bili-proxy-refresh.service` 排查。
 - 订阅服务需保持有效；更新脚本不购买套餐、不续费。订阅失效时保留现有节点。
 

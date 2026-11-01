@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 """Refresh only NAS proxy nodes, retaining local DNS, routing and credentials."""
 import argparse
+import copy
 import json
 import os
 from pathlib import Path
@@ -104,7 +105,11 @@ def main():
         if len(raw) > 2_000_000:
             raise ValueError('Subscription too large')
         current = yaml.safe_load(CONFIG.read_text())
+        previous = copy.deepcopy(current)
         value = merge_nodes(current, yaml.safe_load(raw))
+        if value == previous:
+            print(json.dumps({'nodes': len(value['proxies']), 'changed': False}))
+            return
         tmp = CONFIG.with_suffix('.candidate.yaml')
         tmp.write_text(yaml.safe_dump(value, allow_unicode=True, sort_keys=False))
         os.chmod(tmp, 0o600)

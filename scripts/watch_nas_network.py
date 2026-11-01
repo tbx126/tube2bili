@@ -31,7 +31,7 @@ def main():
     state = json.loads(STATE.read_text()) if STATE.exists() else {}
     now = time.time()
     proxy = reachable('https://www.youtube.com/generate_204', 'http://127.0.0.1:17897', 204)
-    tunnel = reachable('http://127.0.0.1:20241/ready')
+    tunnel = reachable('http://127.0.0.1:42081/ready')
     app = reachable('http://192.168.5.6:18080/healthz')
     if should_restart(state, tunnel, proxy, now):
         subprocess.run(['docker', 'restart', 'cloudflared-azuki'], check=True,
