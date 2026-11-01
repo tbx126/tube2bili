@@ -5,6 +5,23 @@ import time
 from . import store
 
 
+def service_health():
+    path = store.DATA / 'network-health.json'
+    try:
+        value = json.loads(path.read_text())
+        checked_at = float(value['checked_at'])
+        fresh = 0 <= time.time() - checked_at <= 180
+        network = {key: bool(value.get(key)) if fresh else None for key in ('proxy', 'tunnel', 'app')}
+        network.update(checked_at=checked_at, stale=not fresh)
+    except (OSError, ValueError, KeyError, TypeError):
+        network = {}
+    ai = store.get_runtime_state('language_api_backoff', {}) or {}
+    telegram = store.get_runtime_state('telegram_delivery', {}) or {}
+    return {'network': network,
+            'translation_error': ai.get('reason', '') if ai.get('code') else '',
+            'telegram_error': telegram.get('error', '') if telegram.get('until', 0) > time.time() else ''}
+
+
 def cooldowns():
     now = time.time()
     result = []
@@ -16,7 +33,8 @@ def cooldowns():
         state = store.get_runtime_state(key, {}) or {}
         until = float(state.get('until', 0))
         if until > now:
-            result.append({'key': key, 'name': name, 'until': until, 'stages': stages})
+            result.append({'key': key, 'name': name, 'until': until, 'stages': stages,
+                           'reason': state.get('reason', '')})
     return result
 
 

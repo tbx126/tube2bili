@@ -39,12 +39,15 @@ class YouTubeError(RuntimeError):
             'rate': 'YouTube 请求限流，稍后自动重试，请保持代理出口稳定',
             'token': 'YouTube 令牌或媒体请求被拒绝，请检查 PO Token 服务及代理出口',
             'network': 'YouTube 网络请求失败，请检查代理与网络连接',
+            'range': 'YouTube 下载断点已失效（HTTP 416），需要重新下载临时分片',
             'other': 'YouTube 下载失败，请检查视频可用性及工具日志'}[kind])
 
 
 def youtube_error_kind(text):
     low = text.casefold()
     errors = '\n'.join(line for line in low.splitlines() if 'error' in line)
+    if '416' in errors and ('range' in errors or 'http error 416' in errors):
+        return 'range'
     if any(x in errors for x in ('429', 'too many requests', "this content isn't available, try again later")):
         return 'rate'
     if 'not a bot' in errors:
@@ -187,7 +190,27 @@ def download(task, settings, folder):
     # Keep subtitle endpoints out of the critical video download. YouTube can
     # rate-limit captions independently; yt-dlp otherwise exits nonzero and
     # prevents a usable video from reaching the ASR fallback.
-    execute(settings, video_args, folder, task['id'])
+    try:
+        execute(settings, video_args, folder, task['id'])
+    except YouTubeError as exc:
+        if exc.kind != 'range':
+            raise
+        # Preserve stale fragments for inspection; never move complete videos,
+        # captions, credentials, subdirectories or files outside this task.
+        import uuid
+        backup = folder / ('partial-recovery-' + uuid.uuid4().hex)
+        for path in list(folder.iterdir()):
+            if path.is_file() and not path.is_symlink() and path.name.startswith('source.') and (
+                    path.name.endswith(('.part', '.ytdl')) or '.part-Frag' in path.name):
+                backup.mkdir(exist_ok=True)
+                path.rename(backup / path.name)
+        store.event(task['id'], '下载断点失效（HTTP 416），旧临时分片已保留，重新下载一次')
+        try:
+            execute(settings, ['--no-continue'] + video_args, folder, task['id'])
+        except YouTubeError as retried:
+            if retried.kind == 'range':
+                raise Waiting('重新下载仍返回 HTTP 416，请检查视频可用性；旧分片已保留') from None
+            raise
     info = json.loads((folder / 'source.info.json').read_text('utf-8'))
     if not (folder / 'source.mp4').exists():
         raise RuntimeError('下载完成但未找到 MP4')

@@ -8,6 +8,7 @@ import srt
 
 from . import store
 from . import qwen
+from . import provider_health
 from .media import RetryLater, Waiting, check, run
 
 
@@ -110,8 +111,13 @@ def chat(task_id, settings, instruction, content):
     transient_status = None
     invalid_response = False
     last_status = None
+    blocked_routes = []
     for route in routes(settings.translation):
         check(task_id)
+        held = provider_health.blocked(route)
+        if held:
+            blocked_routes.append(held)
+            continue
         try:
             timeout = 300 if route.protocol == 'qwen' else 180
             with httpx.Client(timeout=timeout) as client:
@@ -126,6 +132,12 @@ def chat(task_id, settings, instruction, content):
                     response.raise_for_status()
                 except httpx.HTTPStatusError:
                     status = response.status_code
+                    held = provider_health.classify(route, response)
+                    if held:
+                        blocked_routes.append(held)
+                        if task_id:
+                            store.event(task_id, f'{held}（{held.code}）；此路由暂停一小时，保留处理进度')
+                        continue
                     if task_id:
                         store.event(task_id, f'翻译 API 返回 HTTP {status}；将尝试其他路由或延后重试')
                     if status in (408, 425, 429, 500, 502, 503, 504):
@@ -135,6 +147,7 @@ def chat(task_id, settings, instruction, content):
                         last_status = status
                     continue
                 value = response.json()
+                provider_health.clear(route)
                 record(task_id, route, value.get('usage'))
                 message = value['choices'][0].get('message') or {}
                 raw = message.get('content')
@@ -159,8 +172,10 @@ def chat(task_id, settings, instruction, content):
         raise RetryLater(f'翻译服务暂时不可用{detail}，稍后自动重试', transient_delay)
     if invalid_response:
         raise RetryLater('翻译服务返回的 JSON 无效，稍后自动重试', 60)
+    if blocked_routes:
+        raise min(blocked_routes, key=lambda error: error.until)
     if last_status:
-        raise RuntimeError(f'翻译 API 返回 HTTP {last_status}；请检查 API Key、模型和请求设置')
+        raise Waiting(f'翻译 API 返回 HTTP {last_status}；请检查 API Key、模型和请求设置；处理进度已保留')
     raise RuntimeError('翻译服务请求失败；请检查路由、余额和模型')
 
 
@@ -248,8 +263,13 @@ def transcribe(task, settings, folder, duration):
             transient_status = None
             invalid_response = False
             last_status = None
+            blocked_routes = []
             for route in available:
                 check(task['id'])
+                held = provider_health.blocked(route)
+                if held:
+                    blocked_routes.append(held)
+                    continue
                 try:
                     if route.protocol == 'qwen_audio':
                         if min(part_seconds, duration - offset) > 300:
@@ -272,6 +292,15 @@ def transcribe(task, settings, folder, duration):
                     cached.write_text(json.dumps({'segments': segments, 'language': detected_language}, ensure_ascii=False), 'utf-8')
                     break
                 except httpx.HTTPStatusError as exc:
+                    # Streaming ASR errors must be read before inspecting JSON.
+                    exc.response.read()
+                    from urllib.parse import urlparse
+                    held = (provider_health.classify(route, exc.response)
+                            if exc.request.url.host == urlparse(route.base_url).hostname else None)
+                    if held:
+                        blocked_routes.append(held)
+                        store.event(task['id'], f'语音识别服务：{held}（{held.code}）')
+                        continue
                     status = exc.response.status_code
                     if task['id']:
                         store.event(task['id'], f'语音识别 API 返回 HTTP {status}；将尝试其他路由或延后重试')
@@ -297,8 +326,10 @@ def transcribe(task, settings, folder, duration):
                     raise RetryLater(f'语音识别服务暂时不可用{detail}，稍后自动重试', transient_delay)
                 if invalid_response:
                     raise RetryLater('语音识别服务返回内容无效，稍后自动重试', 60)
+                if blocked_routes:
+                    raise min(blocked_routes, key=lambda error: error.until)
                 if last_status:
-                    raise RuntimeError(f'语音识别 API 返回 HTTP {last_status}；请检查 API Key、模型和请求设置')
+                    raise Waiting(f'语音识别 API 返回 HTTP {last_status}；请检查 API Key、模型和请求设置')
                 raise RuntimeError('语音识别失败：服务必须支持带分段时间轴的 verbose_json')
         for segment in segments:
             start, end = float(segment['start']), float(segment['end'])

@@ -48,7 +48,7 @@ def test_network_retry_is_bounded(client):
  store.set_runtime_state(worker.YOUTUBE_NETWORK_STATE,{'strikes':5,'last_at':time.time(),'until':0})
  worker._hold_youtube_network(tid,store.task(tid))
  assert store.task(tid)['status']=='waiting'
- assert '停止自动重试' in store.task(tid)['error']
+ assert '已暂停视频重试' in store.task(tid)['error']
 
 def test_channel_check_respects_cooldown(client):
  c=client.post('/api/channels',json={'name':'Chess','url':'https://www.youtube.com/@agadmator/videos'}).json()['id']

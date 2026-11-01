@@ -157,6 +157,8 @@ def transcribe_audio(task_id, route, audio):
             json={'model': route.model, 'input': {'messages': [{'role': 'user', 'content': [
                 {'type': 'input_audio', 'input_audio': {'data': 'data:audio/mpeg;base64,' + encoded}}]}]},
                   'parameters': {'format': 'mp3', 'sample_rate': '16000', 'enable_words': True}}) as response:
+            if response.is_error:
+                response.read()
             response.raise_for_status()
             if 'text/event-stream' in response.headers.get('content-type', ''):
                 data = []

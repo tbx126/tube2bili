@@ -65,6 +65,7 @@ function reason(t) {
 function drawToday() {
   const {tasks, usage, disk, daily, notices} = overview;
   const s = settingsData;
+  const service = overview.service_health || {};
   const attention = tasks.filter(t => groups.attention.includes(t.status));
   const running = tasks.filter(t => t.status === 'running');
   const queue = tasks.filter(t => ['queued','retrying'].includes(t.status)).reverse();
@@ -96,7 +97,12 @@ function drawToday() {
   const max = Math.max(1, ...bars.map(b => b.count));
   const used = disk.total ? (1 - disk.free/disk.total) * 100 : 0;
 
+  const issues = [service.translation_error, service.telegram_error,
+    service.network?.stale ? '网络监控超过三分钟未更新，请检查 NAS 监控定时器' : '',
+    service.network?.proxy === false ? 'YouTube 代理不可用，节点正在自动故障转移' : '',
+    service.network?.tunnel === false ? '公网 Tunnel 未就绪，网络正常后将尝试恢复' : ''].filter(Boolean);
   $('#main').innerHTML = `<div class="page-head"><div><h1>今天</h1><p class="sub">${summary}</p></div>${s ? `<span class="muted" style="font-size:13px">每 <span class="mono">${s.poll_minutes}</span> 分钟检查一次订阅</span>` : ''}</div>
+  ${issues.length ? `<div class="card pad" role="status" style="margin-bottom:20px;border-color:var(--warn)"><strong>服务需要关注</strong>${issues.map(message => `<p class="hint">${esc(message)}</p>`).join('')}</div>` : ''}
   <div class="today"><div class="today-main">
     <section><div class="section-title"><h2>需要你处理 ${attention.length ? `<span class="count warn">${attention.length}</span>` : ''}</h2></div>${attnHtml}</section>
     <section><div class="section-title"><h2>正在处理</h2></div>${nowHtml}</section>

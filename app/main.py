@@ -144,6 +144,7 @@ def overview():
     return {'tasks': tasks, 'stats': stats, 'usage': usage, 'daily': daily,
             'disk': {'total': disk.total, 'free': disk.free},
             'notices': store.rows('SELECT * FROM notices ORDER BY id DESC LIMIT 20'),
+            'service_health': dashboard.service_health(),
             'worker_enabled': os.environ.get('DISABLE_WORKER') != '1',
             'auth_required': app.state.auth_required, 'cooldowns': holds, 'server_time': time.time(),
             'timezone': 'Asia/Shanghai'}
@@ -415,16 +416,29 @@ def update_settings(value: dict):
 @app.post('/api/routes/translation/{slot}/test')
 def translation_test(slot: str):
     from .language import chat
+    from . import provider_health
     if slot not in ('primary', 'fallback'):
         raise HTTPException(404)
     settings = config.get()
     route = getattr(settings.translation, slot)
+    provider_health.clear(route)
     settings.translation = config.Routing(primary=route)
     try:
         result = chat(None, settings, 'Translate the text into Simplified Chinese. Return {"text":"translation"}.', {'text': 'Hello, world.'})
         if not isinstance(result.get('text'), str) or not result['text'].strip():
             raise ValueError()
+        # Successful owner-triggered testing is also a recovery signal.
+        state = store.get_runtime_state(worker.AI_BACKOFF_STATE, {}) or {}
+        if state.get('code'):
+            store.set_runtime_state(worker.AI_BACKOFF_STATE, {})
+            for row in store.rows("SELECT id FROM tasks WHERE deleted=0 AND stage IN ('translate','publish') AND status='retrying'"):
+                task = store.task(row['id'])
+                if task['payload'].pop('provider_blocked', None):
+                    store.update(task['id'], status='queued', next_run=0, error='', payload=task['payload'])
+                    store.event(task['id'], '翻译接口测试成功，自动继续账户异常中断的任务')
         return {'ok': True, 'text': result['text'][:200]}
+    except provider_health.ProviderBlocked as exc:
+        raise HTTPException(422, str(exc))
     except (Waiting, RuntimeError, ValueError):
         raise HTTPException(422, '翻译测试失败，请检查 API Key、模型权限、地址和余额')
 

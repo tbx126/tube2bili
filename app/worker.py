@@ -8,6 +8,7 @@ import time
 import httpx
 
 from . import config, store
+from .provider_health import ProviderBlocked
 from .language import translate
 from .media import Reconcile, RetryLater, Stopped, Waiting, YouTubeError, check, download, run, ytdlp
 from .youtube import LoginRequired, execute as youtube_execute, login_notice
@@ -72,21 +73,52 @@ def _hold_youtube_network(task_id=None, task=None):
     message = (f'YouTube 与 NAS 代理的 TLS/网络连接中断，下载队列暂停 '
                f'{cooldown // 60} 分钟后自动重试；请检查代理节点健康状态')
     if strikes >= 6:
-        message = 'YouTube 与 NAS 代理连续 6 次网络检查失败，已停止自动重试；请检查代理后手动继续'
+        message = 'YouTube 与 NAS 代理连续 6 次网络检查失败，已暂停视频重试；每五分钟检测网络，恢复后自动继续'
     store.set_runtime_state(YOUTUBE_NETWORK_STATE, {'strikes': strikes, 'until': until, 'last_at': now})
 
     if task is not None:
+        payload = task['payload']
+        payload['network_blocked'] = True
         store.update(task_id, status='waiting' if strikes >= 6 else 'retrying', attempts=task['attempts'] + 1,
-                     next_run=until, error=message)
+                     next_run=until, error=message, payload=payload)
         store.event(task_id, message)
     rows = store.rows("SELECT id FROM tasks WHERE deleted=0 AND stage='download' "
                       "AND status IN ('queued','retrying') AND id<>COALESCE(?, '')", (task_id,))
     for row in rows:
-        store.update(row['id'], status='waiting' if strikes >= 6 else 'retrying', next_run=until, error=message)
+        payload = store.task(row['id'])['payload']
+        payload['network_blocked'] = True
+        store.update(row['id'], status='waiting' if strikes >= 6 else 'retrying', next_run=until, error=message, payload=payload)
         store.event(row['id'], message)
-    if strikes == 1 or strikes % 3 == 0:
+    if strikes in (1, 6):
         store.notice(message)
     return message
+
+
+def recover_network():
+    """Probe the shared outage slowly, without needing cookies or retrying videos."""
+    state = store.get_runtime_state(YOUTUBE_NETWORK_STATE, {}) or {}
+    if not state.get('strikes') or time.time() - state.get('probe_at', 0) < 300:
+        return
+    state['probe_at'] = time.time()
+    store.set_runtime_state(YOUTUBE_NETWORK_STATE, state)
+    try:
+        with httpx.Client(proxy=config.get().proxy or None, timeout=10) as client:
+            response = client.get('https://www.youtube.com/generate_204')
+            if response.status_code != 204:
+                return
+    except httpx.HTTPError:
+        return
+    # Do not clear the independent YouTube 429 cooldown.
+    store.set_runtime_state(YOUTUBE_NETWORK_STATE, {})
+    for row in store.rows("SELECT id FROM tasks WHERE deleted=0 AND stage='download' AND status IN ('waiting','retrying')"):
+        task = store.task(row['id'])
+        if not task['payload'].get('network_blocked'):
+            continue
+        task['payload'].pop('network_blocked', None)
+        store.update(row['id'], status='queued', attempts=0, next_run=0, error='', payload=task['payload'])
+        store.event(row['id'], 'YouTube 代理健康检查恢复，自动继续下载')
+    store.execute("UPDATE channels SET last_poll=0,error='' WHERE enabled=1 AND error LIKE '%网络检查失败%'")
+    store.notice('YouTube 代理连接已恢复，频道检查及网络中断的任务自动继续')
 
 
 def proxy_changed():
@@ -151,6 +183,20 @@ def process(task_id):
     except Reconcile as exc:
         store.update(task_id, status='reconcile', error=str(exc))
         store.notice(f'需要核对投稿：{store.task(task_id)["title"]}\n{exc}')
+    except ProviderBlocked as exc:
+        task = store.task(task_id)
+        if task['status'] not in ('paused', 'cancelled'):
+            previous = store.get_runtime_state(AI_BACKOFF_STATE, {}) or {}
+            message = f'{exc}（{exc.code}）；一小时后自动复查，保留处理进度'
+            task['payload']['provider_blocked'] = True
+            store.set_runtime_state(AI_BACKOFF_STATE, {'until': exc.until, 'reason': message, 'code': exc.code})
+            store.update(task_id, status='retrying', next_run=exc.until, error=message, payload=task['payload'])
+            store.event(task_id, message)
+            if previous.get('code') != exc.code or time.time() - previous.get('notice_at', 0) >= 86400:
+                store.notice(message)
+                previous['notice_at'] = time.time()
+            store.set_runtime_state(AI_BACKOFF_STATE, {'until': exc.until, 'reason': message,
+                'code': exc.code, 'notice_at': previous.get('notice_at', 0)})
     except RetryLater as exc:
         task = store.task(task_id)
         if task['status'] not in ('paused', 'cancelled'):
@@ -276,6 +322,7 @@ def ingest(channel, entries):
 
 
 def poll_channels():
+    recover_network()
     settings = config.get()
     for channel in store.rows('SELECT * FROM channels WHERE enabled=1 AND last_poll<?', (time.time() - settings.poll_minutes * 60,)):
         if STOP.is_set():
@@ -317,6 +364,10 @@ def deliver_notices():
     settings = config.get()
     if not settings.telegram_token or not settings.telegram_chat_id:
         return
+    now = time.time()
+    hold = store.get_runtime_state('telegram_delivery', {}) or {}
+    if hold.get('until', 0) > now:
+        return
     for notice in store.rows('SELECT * FROM notices WHERE sent=0 AND attempts<5 AND next_run<=? ORDER BY id LIMIT 10', (time.time(),)):
         try:
             with httpx.Client(timeout=20, proxy=settings.proxy or None) as client:
@@ -326,7 +377,30 @@ def deliver_notices():
                 if not response.json().get('ok'):
                     raise ValueError()
             store.execute('UPDATE notices SET sent=1 WHERE id=?', (notice['id'],))
-        except Exception:
+            store.set_runtime_state('telegram_delivery', {})
+        except httpx.TransportError as exc:
+            # An outage is shared, not ten independent failed messages. Preserve
+            # delivery attempts and retry the transport later without dropping notices.
+            store.set_runtime_state('telegram_delivery', {'until': now + 300,
+                'error': f'Telegram 网络连接失败（{type(exc).__name__}），五分钟后自动继续'})
+            break
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            if status == 429 or status >= 500:
+                delay = 300
+                if status == 429:
+                    try:
+                        delay = max(30, min(3600, int(exc.response.json()['parameters']['retry_after'])))
+                    except (ValueError, TypeError, KeyError):
+                        pass
+                store.set_runtime_state('telegram_delivery', {'until': now + delay,
+                    'error': f'Telegram 返回 HTTP {status}，稍后自动重试'})
+                break
+            store.execute('UPDATE notices SET attempts=attempts+1,next_run=? WHERE id=?', (now + 3600, notice['id']))
+            store.set_runtime_state('telegram_delivery', {'until': now + 3600,
+                'error': f'Telegram 返回 HTTP {status}，请检查 Bot 和会话权限'})
+            break
+        except (ValueError, KeyError, TypeError):
             store.execute('UPDATE notices SET attempts=attempts+1,next_run=? WHERE id=?', (time.time() + 60 * 2**notice['attempts'], notice['id']))
 
 
