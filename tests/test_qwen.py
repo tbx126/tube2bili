@@ -114,6 +114,14 @@ def test_qwen_word_timestamps_are_grouped_into_readable_cues():
     assert ' '.join(segment['text'] for segment in result['segments']).split() == ['word'] * 20
 
 
+def test_audio_token_pieces_keep_english_names_whole():
+    words = [{'begin_time': i*100, 'end_time': (i+1)*100, 'text': text, 'punctuation': ''}
+             for i,text in enumerate(['We', ' have', ' Prag', 'gn', 'an', 'and', 'haa', ' versus', ' Sin', 'da', 'rov'])]
+    result = qwen.lexical_words(words)
+    assert [w['text'].strip() for w in result] == ['We', 'have', 'Praggnanandhaa', 'versus', 'Sindarov']
+    assert result[2]['begin_time'] == 200 and result[2]['end_time'] == 700
+
+
 def test_qwen_long_sentence_without_word_timestamps_is_paused():
     value = {'transcripts': [{'channel_id': 0, 'sentences': [{
         'begin_time': 0, 'end_time': 300000, 'text': 'word ' * 1000,

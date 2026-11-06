@@ -290,7 +290,7 @@ def transcribe(task, settings, folder, duration):
                     if (not segments and not value.get('no_speech')) or any(not {'start', 'end', 'text'} <= x.keys() for x in segments):
                         raise ValueError()
                     cached.write_text(json.dumps({'segments': segments, 'language': detected_language,
-                        **({'words': value['words']} if value.get('words') else {})}, ensure_ascii=False), 'utf-8')
+                        **({'words': value['words'], 'word_schema': value.get('word_schema')} if value.get('words') else {})}, ensure_ascii=False), 'utf-8')
                     break
                 except httpx.HTTPStatusError as exc:
                     # Streaming ASR errors must be read before inspecting JSON.

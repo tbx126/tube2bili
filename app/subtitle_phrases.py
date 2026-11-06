@@ -13,7 +13,26 @@ import srt
 from . import qwen, store
 from .media import Waiting, check, run
 
-POLICY = 'intro-word-phrases-v1'
+POLICY = 'intro-word-phrases-v2'
+
+
+def normalized_reference(text):
+    """Compare spoken years with numeric captions without changing their text."""
+    ones = 'zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen'.split()
+    tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety']
+    forms = {}
+    for year in range(2000, 2100):
+        n = year - 2000
+        suffix = ones[n] if n < 20 else tens[n // 10] + (' ' + ones[n % 10] if n % 10 else '')
+        for form in ([f'two thousand {suffix}', f'two thousand and {suffix}'] if n else ['two thousand']):
+            forms[form] = str(year)
+        if n >= 10:
+            forms['twenty ' + suffix] = str(year)
+        forms[' '.join(ones[int(digit)] for digit in str(year))] = str(year)
+    pattern = r'\b(?:' + '|'.join(re.escape(form) for form in sorted(forms, key=len, reverse=True)) + r')\b'
+    text = re.sub(r'[-\s]+', ' ', text.casefold())
+    text = re.sub(pattern, lambda match: forms[match.group()], text)
+    return re.sub(r'[^a-z0-9]+', '', text)
 
 
 def group_words(words):
@@ -67,9 +86,11 @@ def prepare_intro(task, settings, folder, cues):
     if cache.exists():
         value = json.loads(cache.read_text())
     else:
+        value = {}
+    if value.get('word_schema') != 'lexical-v2':
         asr = folder / 'asr-0.json'
         value = json.loads(asr.read_text()) if asr.exists() else {}
-        if not value.get('words'):
+        if not value.get('words') or value.get('word_schema') != 'lexical-v2':
             route = next((route for route in [settings.transcription.primary,
                 *([settings.transcription.fallback] if settings.transcription.fallback_enabled else [])]
                 if route.protocol == 'qwen_audio' and route.base_url and route.model), None)
@@ -90,9 +111,8 @@ def prepare_intro(task, settings, folder, cues):
         word['end'] = min(float(word['end']), cutoff)
     # Independently recognized audio must agree with the source transcript before
     # changing any files. A mismatch is reviewable, never silently dropped text.
-    normalize = lambda text: re.sub(r'[^a-z0-9]+', '', text.casefold())
-    old_text = normalize(' '.join(cue.content for cue in prefix))
-    new_text = normalize(' '.join(word['text'] for word in words))
+    old_text = normalized_reference(' '.join(cue.content for cue in prefix))
+    new_text = normalized_reference(' '.join(word['text'] for word in words))
     if difflib.SequenceMatcher(None, old_text, new_text, autojunk=False).ratio() < .85:
         raise Waiting('开头语音识别与原字幕文本差异较大，保留原字幕等待核对')
     groups = group_words(words)

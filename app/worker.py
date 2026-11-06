@@ -24,18 +24,21 @@ MAINTENANCE_STATE = 'subtitle_maintenance'
 
 
 def begin_subtitle_maintenance():
+    from .subtitle_phrases import POLICY
     now = time.time()
     with store.connect() as db:
         db.execute('BEGIN IMMEDIATE')
         previous = db.execute('SELECT value FROM runtime_state WHERE key=?', (MAINTENANCE_STATE,)).fetchone()
         state = json.loads(previous['value']) if previous else {}
-        if state.get('paused') and state.get('owner') == 'intro-word-phrases-v1':
+        if state.get('paused') and state.get('owner') in (POLICY, 'intro-word-phrases-v1', 'intro-review-hold'):
             state['until'] = now + 7200
+            state['owner'] = POLICY
+            state['reason'] = '正在更新开头短语字幕，普通队列暂缓，完成后自动恢复'
         else:
             rows = [dict(row) for row in db.execute("SELECT id,status,stage,next_run,error FROM tasks WHERE deleted=0 AND status IN ('queued','retrying','running')")]
             if any(row['status'] == 'running' and row['stage'] == 'publish' for row in rows):
                 raise Waiting('当前投稿提交中，请等待结果后再开始字幕维护')
-            state = {'owner': 'intro-word-phrases-v1', 'until': now + 7200,
+            state = {'owner': POLICY, 'until': now + 7200,
                      'reason': '正在更新开头短语字幕，普通队列暂缓，完成后自动恢复', 'paused': rows}
             for row in rows:
                 db.execute("UPDATE tasks SET status='paused',error=?,updated=? WHERE id=?", ('维护中：更新开头短语字幕', now, row['id']))

@@ -67,6 +67,10 @@ async def repair(task_id):
         return {'id': task_id, 'status': 'skipped_no_assets'}
     checkpoint = folder / 'intro-phrases-repair.json'
     state = json.loads(checkpoint.read_text()) if checkpoint.exists() else {}
+    reference = folder
+    if state and state.get('policy') != POLICY:
+        reference = folder / state['backup']
+        state = {'reference_backup': reference.name}
     original_manifest = folder / 'intro-phrases.json'
     if original_manifest.exists() and not checkpoint.exists():
         original = json.loads(original_manifest.read_text())
@@ -75,14 +79,15 @@ async def repair(task_id):
     if state.get('policy') == POLICY and state.get('status') == 'verified':
         return {'id': task_id, 'status': 'verified_cached'}
     if state.get('status') not in ('prepared', 'installed', 'submitted', 'pending_review'):
-        stage = folder / 'intro-phrases-work'
+        stage = folder / 'intro-phrases-work-v2'
         stage.mkdir(exist_ok=True)
         for name in ('en.srt', 'zh.srt', 'asr-0.json'):
-            if not (stage / name).exists() and (folder / name).exists():
-                shutil.copy2(folder / name, stage / name)
+            base = reference if name in ('en.srt', 'zh.srt') else folder
+            if not (stage / name).exists() and (base / name).exists():
+                shutil.copy2(base / name, stage / name)
         if not (stage / 'source.mp4').exists():
             os.link(folder / 'source.mp4', stage / 'source.mp4')
-        old_en, old_zh = load_cues(folder / 'en.srt'), load_cues(folder / 'zh.srt')
+        old_en, old_zh = load_cues(reference / 'en.srt'), load_cues(reference / 'zh.srt')
         if len(old_en) != len(old_zh) or any(a.start != b.start or a.end != b.end for a, b in zip(old_en, old_zh)):
             return {'id': task_id, 'status': 'needs_review', 'reason': 'existing_tracks_not_paired'}
         settings = config.get()
@@ -125,7 +130,7 @@ async def repair(task_id):
                  'files': {name: digest(stage / name) for name in FILES}}
         qwen.save(checkpoint, state)
     if state.get('status') == 'prepared':
-        stage = folder / 'intro-phrases-work'
+        stage = folder / 'intro-phrases-work-v2'
         for name in FILES:
             if digest(stage / name) != state['files'][name]:
                 raise ValueError('Prepared subtitle artifact changed')

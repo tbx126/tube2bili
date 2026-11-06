@@ -7,7 +7,7 @@ import srt
 from app import config, language, store
 from app.bili_bridge import receipt_matches
 from app.media import Waiting
-from app.subtitle_phrases import group_words, prepare_intro
+from app.subtitle_phrases import group_words, prepare_intro, normalized_reference
 
 
 def word(start, text):
@@ -41,7 +41,7 @@ def test_intro_reuses_words_preserves_tail_and_backs_up_checkpoints(client, tmp_
     (folder / 'en.srt').write_text(srt.compose(cues))
     (folder / 'translation-0.json').write_text('{"lines":[]}')
     words = [word(.8 + index*.4, token) for index, token in enumerate(['Hello', 'everyone', 'and', 'welcome'])]
-    (folder / 'asr-0.json').write_text(json.dumps({'words': words}))
+    (folder / 'asr-0.json').write_text(json.dumps({'words': words, 'word_schema': 'lexical-v2'}))
     updated = prepare_intro(store.task(task_id), settings, folder, cues)
     assert len(updated) == 3
     assert [cue.index for cue in updated] == [1, 2, 3]
@@ -57,7 +57,7 @@ def test_unrelated_recognition_keeps_original_subtitles(client, tmp_path):
     cues = [srt.Subtitle(1, dt.timedelta(seconds=1), dt.timedelta(seconds=2), 'Hello everyone')]
     original = srt.compose(cues)
     (tmp_path / 'en.srt').write_text(original)
-    (tmp_path / 'asr-0.json').write_text(json.dumps({'words': [word(1, 'unrelated')]}))
+    (tmp_path / 'asr-0.json').write_text(json.dumps({'words': [word(1, 'unrelated')], 'word_schema': 'lexical-v2'}))
     with pytest.raises(Waiting, match='差异'):
         prepare_intro(store.task(task_id), config.Settings(intro_phrase_seconds=3), tmp_path, cues)
     assert (tmp_path / 'en.srt').read_text() == original
@@ -72,3 +72,7 @@ def test_changed_subtitles_are_uploaded_again_only_when_revision_is_explicit(tmp
     receipt.write_text('{"content_sha256":"old"}')
     assert receipt_matches(receipt, 'old')
     assert not receipt_matches(receipt, 'new')
+
+
+def test_year_readings_do_not_trigger_a_false_text_mismatch():
+    assert normalized_reference('Played in two thousand and twenty four and twenty twenty six.') == normalized_reference('Played in 2 0 2 4 and 2026.')

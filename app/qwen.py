@@ -4,6 +4,7 @@ import base64
 import json
 import math
 import os
+import re
 import time
 import uuid
 from urllib.parse import quote, urlparse
@@ -57,7 +58,38 @@ def upload(client, route, audio):
     return 'oss://' + key
 
 
-def parse_transcript(value):
+def lexical_words(words):
+    """Audio 3.0 prefixes real words with spaces; unspaced pieces share a word."""
+    result, separated = [], True
+    for item in words:
+        if not isinstance(item, dict):
+            continue
+        raw = str(item.get('text') or '')
+        token = raw.strip()
+        if not token:
+            separated = True
+            continue
+        join = False
+        if result and not separated and not raw[:1].isspace():
+            previous = result[-1]
+            try:
+                gap = float(item['begin_time']) - float(previous['end_time'])
+            except (KeyError, TypeError, ValueError):
+                gap = 999
+            join = (not previous.get('punctuation') and 0 <= gap <= 100
+                    and bool(re.search(r'[A-Za-z]$', str(previous.get('text', ''))))
+                    and bool(re.match(r"[A-Za-z']", token)))
+        if join:
+            result[-1]['text'] = str(result[-1]['text']).rstrip() + token
+            result[-1]['end_time'] = item.get('end_time')
+            result[-1]['punctuation'] = item.get('punctuation', '')
+        else:
+            result.append(dict(item))
+        separated = False
+    return result
+
+
+def parse_transcript(value, token_spaces=False):
     sentences = [s for track in value['transcripts'] if track.get('channel_id', 0) == 0
                  for s in track['sentences'] if str(s.get('text', '')).strip()]
     if not sentences:
@@ -85,6 +117,8 @@ def parse_transcript(value):
     for sentence in sentences:
         words = sentence.get('words')
         if isinstance(words, list) and words:
+            if token_spaces:
+                words = lexical_words(words)
             current_text = ''
             current_start = current_end = None
 
@@ -133,6 +167,7 @@ def parse_transcript(value):
     result = {'language': 'en' if languages == {'en'} else '', 'segments': segments}
     if word_segments:
         result['words'] = word_segments
+        result['word_schema'] = 'lexical-v2'
     return result
 
 
@@ -182,7 +217,7 @@ def transcribe_audio(task_id, route, audio):
     if no_speech and not sentences:
         return {'language': '', 'segments': [], 'no_speech': True}
     return parse_transcript({'transcripts': [{'channel_id': 0,
-        'sentences': sorted(sentences.values(), key=lambda s: s['begin_time'])}]})
+        'sentences': sorted(sentences.values(), key=lambda s: s['begin_time'])}]}, token_spaces=True)
 
 
 def transcribe(task_id, route, audio):
