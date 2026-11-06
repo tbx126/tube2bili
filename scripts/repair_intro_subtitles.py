@@ -19,7 +19,7 @@ from app.bili_bridge import perform, subtitle_data
 from app.language import load_cues, subtitle_lines
 from app.media import Waiting, RetryLater
 from app.publishing import cookies
-from app.subtitle_phrases import POLICY, prepare_intro, signature
+from app.subtitle_phrases import POLICY, prepare_intro, signature, paired_cues
 from app.subtitle_style import write_ass
 
 FILES = ('en.srt', 'zh.srt', 'bilingual.srt', 'bilingual.ass')
@@ -87,13 +87,12 @@ async def repair(task_id):
                 shutil.copy2(base / name, stage / name)
         if not (stage / 'source.mp4').exists():
             os.link(folder / 'source.mp4', stage / 'source.mp4')
-        old_en, old_zh = load_cues(reference / 'en.srt'), load_cues(reference / 'zh.srt')
-        if len(old_en) != len(old_zh) or any(a.start != b.start or a.end != b.end for a, b in zip(old_en, old_zh)):
-            return {'id': task_id, 'status': 'needs_review', 'reason': 'existing_tracks_not_paired'}
+        old_en, old_zh = paired_cues(reference / 'en.srt', reference / 'zh.srt')
         settings = config.get()
         settings.intro_phrase_seconds = 20
         try:
-            new_en = prepare_intro(task, settings, stage, load_cues(stage / 'en.srt'))
+            staged_en = list(srt.parse((stage / 'en.srt').read_text('utf-8-sig')))
+            new_en = prepare_intro(task, settings, stage, staged_en)
         finally:
             (stage / 'source.mp4').unlink(missing_ok=True)
         manifest_path = stage / 'intro-phrases.json'

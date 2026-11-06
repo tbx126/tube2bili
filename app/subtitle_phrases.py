@@ -16,6 +16,17 @@ from .media import Waiting, check, run
 POLICY = 'intro-word-phrases-v2'
 
 
+def paired_cues(english, chinese):
+    # Deduplicating each language independently can merge repeated Chinese
+    # translations while leaving the English rows separate. Read the saved
+    # paired SRT rows verbatim for repair and preserve the untouched tail.
+    en = list(srt.parse(english.read_text('utf-8-sig')))
+    zh = list(srt.parse(chinese.read_text('utf-8-sig')))
+    if len(en) != len(zh) or any(a.start != b.start or a.end != b.end for a, b in zip(en, zh)):
+        raise Waiting('现有中英文字幕时间轴未成对，保留原文件等待核对')
+    return en, zh
+
+
 def normalized_reference(text):
     """Compare spoken years with numeric captions without changing their text."""
     ones = 'zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen'.split()

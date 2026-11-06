@@ -7,7 +7,7 @@ import srt
 from app import config, language, store
 from app.bili_bridge import receipt_matches
 from app.media import Waiting
-from app.subtitle_phrases import group_words, prepare_intro, normalized_reference, trim_boundary_overlap
+from app.subtitle_phrases import group_words, prepare_intro, normalized_reference, trim_boundary_overlap, paired_cues
 
 
 def word(start, text):
@@ -82,3 +82,13 @@ def test_prefix_does_not_repeat_the_first_word_of_the_untouched_tail():
     words = [word(1, 'he'), word(1.4, 'finished'), word(1.8, 'fifth.')]
     assert trim_boundary_overlap(words, 'he finished', 'fifth. Next sentence', 2.1) == words[:-1]
     assert trim_boundary_overlap(words, 'he finished fifth', 'fifth. Next sentence', 2.1) == words
+
+
+def test_repeated_chinese_translations_do_not_destroy_existing_pairs(tmp_path):
+    en = [srt.Subtitle(1, dt.timedelta(seconds=1), dt.timedelta(seconds=2), 'Hello'),
+          srt.Subtitle(2, dt.timedelta(seconds=2), dt.timedelta(seconds=3), 'Hi')]
+    zh = [srt.Subtitle(c.index, c.start, c.end, '你好') for c in en]
+    english, chinese = tmp_path/'en.srt', tmp_path/'zh.srt'
+    english.write_text(srt.compose(en));chinese.write_text(srt.compose(zh),encoding='utf-8')
+    actual_en, actual_zh = paired_cues(english, chinese)
+    assert len(actual_en) == len(actual_zh) == 2
