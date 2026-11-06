@@ -7,7 +7,7 @@ import srt
 from app import config, language, store
 from app.bili_bridge import receipt_matches
 from app.media import Waiting
-from app.subtitle_phrases import group_words, prepare_intro, normalized_reference
+from app.subtitle_phrases import group_words, prepare_intro, normalized_reference, trim_boundary_overlap
 
 
 def word(start, text):
@@ -76,3 +76,9 @@ def test_changed_subtitles_are_uploaded_again_only_when_revision_is_explicit(tmp
 
 def test_year_readings_do_not_trigger_a_false_text_mismatch():
     assert normalized_reference('Played in two thousand and twenty four and twenty twenty six.') == normalized_reference('Played in 2 0 2 4 and 2026.')
+
+
+def test_prefix_does_not_repeat_the_first_word_of_the_untouched_tail():
+    words = [word(1, 'he'), word(1.4, 'finished'), word(1.8, 'fifth.')]
+    assert trim_boundary_overlap(words, 'he finished', 'fifth. Next sentence', 2.1) == words[:-1]
+    assert trim_boundary_overlap(words, 'he finished fifth', 'fifth. Next sentence', 2.1) == words

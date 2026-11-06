@@ -35,6 +35,20 @@ def normalized_reference(text):
     return re.sub(r'[^a-z0-9]+', '', text)
 
 
+def trim_boundary_overlap(words, prefix_text, tail_text, cutoff):
+    """A short ASR clip can recognize the first word of the untouched tail."""
+    original = normalized_reference(prefix_text)
+    tail = tail_text.split()[:8]
+    trim = 0
+    for length in range(1, min(8, len(words)) + 1):
+        if float(words[-length]['start']) < cutoff - .8:
+            continue
+        suffix = normalized_reference(' '.join(word['text'] for word in words[-length:]))
+        if len(suffix) < 3 or original.endswith(suffix):
+            continue
+        if any(suffix == normalized_reference(' '.join(tail[:n])) for n in range(1, len(tail) + 1)):
+            trim = length
+    return words[:-trim] if trim else words
 def group_words(words):
     groups, current = [], []
     def flush():
@@ -109,6 +123,8 @@ def prepare_intro(task, settings, folder, cues):
         raise Waiting('语音服务未返回开头词级时间戳，保留原字幕等待检查')
     for word in words:
         word['end'] = min(float(word['end']), cutoff)
+    words = trim_boundary_overlap(words, ' '.join(cue.content for cue in prefix),
+                                  ' '.join(cue.content for cue in tail[:2]), cutoff)
     # Independently recognized audio must agree with the source transcript before
     # changing any files. A mismatch is reviewable, never silently dropped text.
     old_text = normalized_reference(' '.join(cue.content for cue in prefix))
