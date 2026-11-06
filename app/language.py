@@ -289,7 +289,8 @@ def transcribe(task, settings, folder, duration):
                     detected_language = str(value.get('language') or '')
                     if (not segments and not value.get('no_speech')) or any(not {'start', 'end', 'text'} <= x.keys() for x in segments):
                         raise ValueError()
-                    cached.write_text(json.dumps({'segments': segments, 'language': detected_language}, ensure_ascii=False), 'utf-8')
+                    cached.write_text(json.dumps({'segments': segments, 'language': detected_language,
+                        **({'words': value['words']} if value.get('words') else {})}, ensure_ascii=False), 'utf-8')
                     break
                 except httpx.HTTPStatusError as exc:
                     # Streaming ASR errors must be read before inspecting JSON.
@@ -367,6 +368,8 @@ def translate(task, settings, folder, source):
         else:
             transcribe(task, settings, folder, source.get('duration'))
     cues = load_cues(en, source.get('duration'))
+    from .subtitle_phrases import prepare_intro
+    cues = prepare_intro(task, settings, folder, cues)
     en.write_text(srt.compose(cues), 'utf-8')
     zh_cues, bilingual = [], []
     batch_size = subtitle_batch_size(settings)

@@ -41,3 +41,5 @@ API subscriptions and network subscriptions have separate service terms. A valid
 API Key and a model appearing in a subscription do not establish permission for
 every use. See `docs/RECOVERY.md` for the Token Plan scope restriction reviewed
 during this repair.
+
+The 2026-11-06 revision also adds no runtime dependency. Existing package and system notices are retained by deriving the private NAS image from rc.36.

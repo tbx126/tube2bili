@@ -3,6 +3,7 @@ import asyncio
 import json
 import sys
 import re
+import hashlib
 
 from bilibili_api import Credential, video
 from bilibili_api.utils.network import Api
@@ -38,6 +39,17 @@ def subtitle_data(path, color='#FFFFFF'):
             'body': body}
 
 
+def receipt_matches(path, signature, revise_legacy=False):
+    if not path.exists():
+        return False
+    try:
+        saved = json.loads(path.read_text('utf-8'))
+        digest = saved.get('content_sha256') if isinstance(saved, dict) else None
+    except (ValueError, OSError):
+        return False
+    return digest == signature if digest else not revise_legacy
+
+
 async def perform(action, task_id):
     task = store.task(task_id)
     folder = store.DATA / 'media' / task_id
@@ -55,14 +67,15 @@ async def perform(action, task_id):
         # CC language tracks contain only their own language.
         for language, filename, receipt_language in [('zh', 'zh.srt', 'zh-CN'), ('en', 'en.srt', 'en')]:
             checkpoint = folder / f'subtitle-{receipt_language}-receipt.json'
-            if checkpoint.exists():
+            digest = hashlib.sha256((folder / filename).read_bytes()).hexdigest()
+            if receipt_matches(checkpoint, digest, bool(task['payload'].get('subtitle_revision'))):
                 continue
             # The pinned SDK's bundled language list predates Bilibili's zh code.
             # Retain its authenticated request/CSRF handling, bypass only that stale list.
             result = await Api(**video.API['operate']['submit_subtitle'], credential=credential).update_data(
                 type=1, oid=cid, lan=language, data=json.dumps(subtitle_data(folder / filename, '#FFD54F' if language == 'zh' else '#FFFFFF')),
                 submit=True, sign=False, bvid=task['payload']['bvid']).result
-            checkpoint.write_text(json.dumps(result, ensure_ascii=False), 'utf-8')
+            checkpoint.write_text(json.dumps({'response': result, 'content_sha256': digest}, ensure_ascii=False), 'utf-8')
         return {'ok': True, 'cid': cid}
     tracks = (await instance.get_subtitle(cid=cid) or {}).get('subtitles', [])
     languages = {track.get('lan') for track in tracks}

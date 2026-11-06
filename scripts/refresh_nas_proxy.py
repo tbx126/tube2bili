@@ -19,6 +19,20 @@ ROOT = Path('/vol2/docker/mihomo-system/config')
 CONFIG = ROOT / 'config.yaml'
 
 
+def probe_running(value):
+    port = int(value['mixed-port'])
+    client = urllib.request.build_opener(urllib.request.ProxyHandler(
+        {'https': f'http://127.0.0.1:{port}'}))
+    for _ in range(3):
+        try:
+            with client.open('https://www.youtube.com/generate_204', timeout=8) as response:
+                if response.status == 204:
+                    return
+        except Exception:
+            time.sleep(2)
+    raise ValueError('Production proxy health check failed')
+
+
 def probe_candidate(value):
     """Test a separate listener before replacing a functioning NAS configuration."""
     with tempfile.TemporaryDirectory(prefix='tube2bili-proxy-') as folder:
@@ -57,8 +71,12 @@ def probe_candidate(value):
 
 
 def merge_nodes(current, incoming):
+    if not isinstance(current, dict) or not isinstance(incoming, dict) or not isinstance(incoming.get('proxies'), list):
+        raise ValueError('Proxy configuration must contain a node list')
     nodes = []
     for value in incoming.get('proxies', []):
+        if not isinstance(value, dict):
+            raise ValueError('Invalid proxy node')
         if value.get('type') not in ('vless', 'trojan', 'hysteria2', 'ss', 'vmess'):
             continue
         if any(word in value.get('name', '') for word in ('剩余', '重置', '到期', '建议', '官网')):
@@ -84,6 +102,21 @@ def merge_nodes(current, incoming):
     return current
 
 
+def local_source(args_file):
+    if args_file:
+        return args_file
+    descriptor = ROOT / 'source.json'
+    if descriptor.exists():
+        value = json.loads(descriptor.read_text())
+        if value.get('mode') != 'file' or not isinstance(value.get('path'), str):
+            raise ValueError('Invalid proxy source; refusing subscription fallback')
+        path = Path(value['path']).resolve()
+        if path.parent != ROOT.resolve() or not path.is_file():
+            raise ValueError('Proxy source must be an existing private configuration file')
+        return path
+    return None
+
+
 def main():
     import fcntl
     parser = argparse.ArgumentParser(description=__doc__)
@@ -93,8 +126,9 @@ def main():
         raise SystemExit('Run as root')
     with open('/run/tube2bili-proxy-refresh.lock', 'w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        if args.file:
-            raw = args.file.read_bytes()
+        source = local_source(args.file)
+        if source:
+            raw = source.read_bytes()
         else:
             url = (ROOT / 'subscription.url').read_text().strip()
             if not url.startswith('https://'):
@@ -126,10 +160,11 @@ def main():
         tmp.replace(CONFIG)
         try:
             subprocess.run(['systemctl', 'restart', 'mihomo-nas.service'], check=True)
-        except subprocess.CalledProcessError:
+            probe_running(value)
+        except (subprocess.CalledProcessError, ValueError):
             shutil.copy2(backup, CONFIG)
             subprocess.run(['systemctl', 'restart', 'mihomo-nas.service'], check=True)
-            raise RuntimeError('Reload failed; previous configuration restored') from None
+            raise RuntimeError('Reload or health check failed; previous configuration restored') from None
         print(json.dumps({'nodes': len(value['proxies']), 'validation': 'passed'}))
 
 

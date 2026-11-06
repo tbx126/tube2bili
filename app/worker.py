@@ -10,7 +10,7 @@ import httpx
 from . import config, store
 from .provider_health import ProviderBlocked
 from .language import translate
-from .media import Reconcile, RetryLater, Stopped, Waiting, YouTubeError, check, download, run, ytdlp
+from .media import CollectionRetry, Reconcile, RetryLater, Stopped, Waiting, YouTubeError, check, download, run, ytdlp
 from .youtube import LoginRequired, execute as youtube_execute, login_notice
 
 STOP = threading.Event()
@@ -183,6 +183,18 @@ def process(task_id):
     except Reconcile as exc:
         store.update(task_id, status='reconcile', error=str(exc))
         store.notice(f'需要核对投稿：{store.task(task_id)["title"]}\n{exc}')
+    except CollectionRetry as exc:
+        task = store.task(task_id)
+        if task['status'] not in ('paused', 'cancelled'):
+            attempts = task['attempts'] + 1
+            exhausted = attempts >= 48
+            message = ('合集接口连续重试仍失败，请检查网络或合集权限；已投稿视频保留'
+                       if exhausted else str(exc))
+            store.update(task_id, status='waiting' if exhausted else 'retrying', attempts=attempts,
+                         next_run=0 if exhausted else time.time() + exc.retry_after, error=message)
+            store.event(task_id, message)
+            if attempts == 1 or exhausted:
+                store.notice(message)
     except ProviderBlocked as exc:
         task = store.task(task_id)
         if task['status'] not in ('paused', 'cancelled'):

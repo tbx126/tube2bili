@@ -81,6 +81,7 @@ def parse_transcript(value):
     sentences = latest
     languages = {s.get('language', '').lower() for s in sentences}
     segments = []
+    word_segments = []
     for sentence in sentences:
         words = sentence.get('words')
         if isinstance(words, list) and words:
@@ -109,6 +110,7 @@ def parse_transcript(value):
                     continue
                 if punctuation and not token.endswith(punctuation):
                     token += punctuation
+                word_segments.append({'start': start, 'end': end, 'text': token})
                 cjk = lambda char: '\u2e80' <= char <= '\u9fff' or '\uf900' <= char <= '\ufaff'
                 no_space = (not current_text or token[:1] in ',.!?:;)]}，。！？、；：）'
                             or cjk(current_text[-1]) or cjk(token[0]))
@@ -128,7 +130,10 @@ def parse_transcript(value):
                 'end': float(sentence['end_time']) / 1000, 'text': sentence['text']})
     if any(len(segment['text']) > 180 or segment['end'] - segment['start'] > 20 for segment in segments):
         raise Waiting('Qwen ASR 未返回可用的词级时间戳；为避免超长或不同步字幕，任务已暂停')
-    return {'language': 'en' if languages == {'en'} else '', 'segments': segments}
+    result = {'language': 'en' if languages == {'en'} else '', 'segments': segments}
+    if word_segments:
+        result['words'] = word_segments
+    return result
 
 
 def transcribe_audio(task_id, route, audio):

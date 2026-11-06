@@ -23,6 +23,10 @@ class RetryLater(RuntimeError):
         super().__init__(message)
 
 
+class CollectionRetry(RetryLater):
+    """Retry an idempotently checked collection operation independently of AI."""
+
+
 class Stopped(Exception):
     pass
 

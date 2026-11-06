@@ -140,6 +140,24 @@ def test_subscription_cannot_override_nas_settings():
     assert 'GEOIP,CN,DIRECT' in value['rules']
     with pytest.raises(ValueError):
         refresh.merge_nodes(copy.deepcopy(original), {'proxies': []})
+    for invalid in (None, 'text', {'proxies': [None]}):
+        with pytest.raises(ValueError):
+            refresh.merge_nodes(copy.deepcopy(original), invalid)
+
+
+def test_private_file_source_never_falls_back_to_old_subscription(tmp_path, monkeypatch):
+    refresh = load_script('refresh_nas_proxy')
+    monkeypatch.setattr(refresh, 'ROOT', tmp_path)
+    source = tmp_path / 'jp.yaml'
+    source.write_text('proxies: []')
+    (tmp_path / 'source.json').write_text(json.dumps({'mode': 'file', 'path': str(source)}))
+    assert refresh.local_source(None) == source.resolve()
+    source.unlink()
+    with pytest.raises(ValueError):
+        refresh.local_source(None)
+    (tmp_path / 'source.json').write_text('{"mode":"unknown"}')
+    with pytest.raises(ValueError):
+        refresh.local_source(None)
 
 
 def test_tunnel_restart_is_bounded_and_requires_healthy_proxy():
@@ -151,6 +169,14 @@ def test_tunnel_restart_is_bounded_and_requires_healthy_proxy():
     assert not watch.should_restart(state, False, True, 10000)
     assert not watch.should_restart(state, True, True, 10000)
     assert state['failures'] == 0
+    state = {}
+    assert not watch.should_restart_proxy(state, False, False)
+    assert not watch.should_restart_proxy(state, False, False)
+    assert watch.should_restart_proxy(state, False, False)
+    state['proxy_restart_attempted'] = True
+    assert not watch.should_restart_proxy(state, False, False)
+    assert not watch.should_restart_proxy(state, False, True)
+    assert not state['proxy_restart_attempted']
 
 
 def test_asr_billing_error_is_classified(client, monkeypatch):

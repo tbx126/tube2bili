@@ -30,3 +30,17 @@ Token Plan 个人版、团队版均有交互式使用范围限制，官方排除
 应用可将根 compose.yaml 恢复为发布前备份，再执行 `docker compose up -d --no-build`；保留数据卷。网络更新前配置位于 `config.yaml.before-subscription-20261101`；最新成功替换前配置位于 `config.last-good.yaml`。恢复配置后重启 `mihomo-nas.service`。
 
 暂停自动更新可执行 `systemctl disable --now tube2bili-proxy-refresh.timer`。暂停 Tunnel 自动恢复可执行 `systemctl disable --now tube2bili-network-watch.timer`。两者不删除数据或凭证。
+
+## 2026-11-06：固定日本节点及备用入口
+
+- 当前使用用户提供的日本节点文件，私有副本为 `/vol2/docker/mihomo-system/config/jp-source-20261106.yaml`，权限 0600。`source.json` 指定 `mode=file`，默认运行更新脚本也不会再回退到旧订阅。旧订阅 timer 已停用。
+- 配置更新同时验证独立候选监听器和正式监听器。正式监听器检查失败时恢复备份；文件缺失或格式错误时保留原配置，不尝试其他来源。
+- 两个独立站点连续三次均无法通过代理时，仅重启一次当前 Mihomo 配置；网络恢复后才允许下一次故障尝试。单一站点故障不会触发全局代理重启。上游节点失效仍需要节点运营方恢复或用户提供备用节点。
+- 不依赖 Cloudflare 的维护入口为 NAS ZeroTier 地址 `10.239.235.220`。SSH 使用原 tbx12 身份密钥，HostKeyAlias=192.168.5.6 核对原主机身份；没有开放新的端口或放宽认证。
+
+## 开头短语字幕
+
+- 实测三个 B 站转码音频与 CC 首句时间相差约 0.02–0.12 秒，未发现全片固定提前；用户确认问题是完整句子先显示、后半句尚未说到。
+- `intro_phrase_seconds` 为开头短语处理范围，0 关闭，当前目标为 20 秒。只依据词级时间戳分成较短短语；开头之后的字幕时间和文字保留。没有词级时间戳或与原文差异过大时停止修改。
+- 识别结果、翻译结果及修复阶段保留检查点。原字幕和提交回执保存在各任务的 `intro-published-backup-*`；中英文、双语 SRT 和黄中白英 ASS 一起更新。
+- `scripts/repair_intro_subtitles.py --task ID` 用于单条验证，`--all` 用于串行处理已投稿且保留文件的任务。脚本只提交 CC，不重新上传视频；用内容摘要避免重复提交，实际公开轨道一致后才记录 verified，平台未显示时记录 pending_review。

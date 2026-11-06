@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from app import collections, config, language, store, worker
-from app.media import Waiting
+from app.media import Waiting, CollectionRetry
 
 
 def setup_task():
@@ -29,7 +29,8 @@ def transport(monkeypatch, task, *, uncertain=False, owner=99, section=34):
             data = {'aid': 56, 'owner': {'mid': owner}, 'desc': task['url'],
                     'pages': [{'cid': 78}], 'title': '测试'}
         elif path.endswith('/episodes/add'):
-            assert json.loads(req.content)['section_id'] == 34
+            assert json.loads(req.content)['sectionId'] == 34
+            assert 'episodes' in json.loads(req.content)
             state['posts'] += 1
             state['added'] = True
             if uncertain:
@@ -46,7 +47,7 @@ def transport(monkeypatch, task, *, uncertain=False, owner=99, section=34):
 def test_uncertain_add_checks_remote_before_retry(client, monkeypatch):
     task, folder = setup_task()
     state = transport(monkeypatch, task, uncertain=True)
-    with pytest.raises(httpx.ReadTimeout):
+    with pytest.raises(CollectionRetry):
         collections.add(task, config.Settings(), folder)
     collections.add(store.task(task['id']), config.Settings(), folder)
     collections.add(store.task(task['id']), config.Settings(), folder)
@@ -69,6 +70,7 @@ def test_collection_retry_does_not_republish(client, monkeypatch):
     worker.process(task['id'])
     assert store.task(task['id'])['status'] == 'retrying'
     assert store.task(task['id'])['stage'] == 'collection'
+    assert not store.get_runtime_state(worker.AI_BACKOFF_STATE)
     worker.process(task['id'])
     assert store.task(task['id'])['status'] == 'completed'
     assert state['posts'] == 1
