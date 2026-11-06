@@ -20,6 +20,11 @@ LOG = logging.getLogger('tube2bili.worker')
 YOUTUBE_RATE_STATE = 'youtube_rate_limit'
 YOUTUBE_NETWORK_STATE = 'youtube_network_backoff'
 AI_BACKOFF_STATE = 'language_api_backoff'
+MAINTENANCE_STATE = 'subtitle_maintenance'
+
+
+def maintenance_active():
+    return (store.get_runtime_state(MAINTENANCE_STATE, {}) or {}).get('until', 0) > time.time()
 
 
 def clear_youtube_rate_limit():
@@ -293,6 +298,9 @@ def process(task_id):
 def worker_loop():
     while not STOP.is_set():
         try:
+            if maintenance_active():
+                STOP.wait(2)
+                continue
             now = time.time()
             cooldown_until = float((store.get_runtime_state(YOUTUBE_RATE_STATE, {}) or {}).get('until', 0))
             network_until = float((store.get_runtime_state(YOUTUBE_NETWORK_STATE, {}) or {}).get('until', 0))
@@ -352,6 +360,8 @@ def channel_entries(settings, channel, folder):
 
 
 def poll_channels():
+    if maintenance_active():
+        return
     recover_network()
     settings = config.get()
     for channel in store.rows('SELECT * FROM channels WHERE enabled=1 AND last_poll<?', (time.time() - settings.poll_minutes * 60,)):

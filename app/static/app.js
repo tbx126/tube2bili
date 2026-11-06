@@ -97,7 +97,7 @@ function drawToday() {
   const max = Math.max(1, ...bars.map(b => b.count));
   const used = disk.total ? (1 - disk.free/disk.total) * 100 : 0;
 
-  const issues = [service.translation_error, service.telegram_error,
+  const issues = [service.maintenance, service.translation_error, service.telegram_error,
     service.network?.stale ? '网络监控超过三分钟未更新，请检查 NAS 监控定时器' : '',
     service.network?.proxy === false ? 'YouTube 代理不可用，节点正在自动故障转移' : '',
     service.network?.tunnel === false ? '公网 Tunnel 未就绪，网络正常后将尝试恢复' : ''].filter(Boolean);

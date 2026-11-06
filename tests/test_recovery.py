@@ -239,3 +239,12 @@ def test_channel_gap_never_silently_marks_unseen_videos_seen(client, monkeypatch
     with pytest.raises(media.Waiting, match='400'):
         worker.channel_entries(config.Settings(), channel, store.DATA)
     assert not store.rows('SELECT * FROM seen')
+
+
+def test_maintenance_pauses_polling_and_expires(client, monkeypatch):
+    store.set_runtime_state(worker.MAINTENANCE_STATE, {'until': time.time() + 60})
+    monkeypatch.setattr(worker, 'recover_network', lambda: pytest.fail('maintenance must not poll'))
+    assert worker.maintenance_active()
+    worker.poll_channels()
+    store.set_runtime_state(worker.MAINTENANCE_STATE, {'until': time.time() - 1})
+    assert not worker.maintenance_active()

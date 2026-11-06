@@ -17,7 +17,9 @@ def service_health():
         network = {}
     ai = store.get_runtime_state('language_api_backoff', {}) or {}
     telegram = store.get_runtime_state('telegram_delivery', {}) or {}
+    maintenance = store.get_runtime_state('subtitle_maintenance', {}) or {}
     return {'network': network,
+            'maintenance': maintenance.get('reason', '维护中') if maintenance.get('until', 0) > time.time() else '',
             'translation_error': ai.get('reason', '') if ai.get('code') else '',
             'telegram_error': telegram.get('error', '') if telegram.get('until', 0) > time.time() else ''}
 
