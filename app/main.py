@@ -261,6 +261,11 @@ def task_action(task_id: str, value: Action):
             if task['stage'] == 'publish' and active:
                 raise HTTPException(409, '投稿提交中，请等待结果；此时停止可能造成结果不明确')
             store.update(task_id, status='paused' if value.action == 'pause' else 'cancelled')
+            maintenance = store.get_runtime_state(worker.MAINTENANCE_STATE, {}) or {}
+            if maintenance.get('paused'):
+                # An explicit user pause must survive automatic maintenance recovery.
+                maintenance['paused'] = [row for row in maintenance['paused'] if row['id'] != task_id]
+                store.set_runtime_state(worker.MAINTENANCE_STATE, maintenance)
         elif value.action in ('resume', 'retry'):
             if active or task['status'] in ('completed', 'reconcile') or task['payload'].get('assets_deleted'):
                 raise HTTPException(409, '当前任务不能直接重试；请先核对状态')

@@ -44,3 +44,5 @@ Token Plan 个人版、团队版均有交互式使用范围限制，官方排除
 - `intro_phrase_seconds` 为开头短语处理范围，0 关闭，当前目标为 20 秒。只依据词级时间戳分成较短短语；开头之后的字幕时间和文字保留。没有词级时间戳或与原文差异过大时停止修改。
 - 识别结果、翻译结果及修复阶段保留检查点。原字幕和提交回执保存在各任务的 `intro-published-backup-*`；中英文、双语 SRT 和黄中白英 ASS 一起更新。
 - `scripts/repair_intro_subtitles.py --task ID` 用于单条验证，`--all` 用于串行处理已投稿且保留文件的任务。脚本只提交 CC，不重新上传视频；用内容摘要避免重复提交，实际公开轨道一致后才记录 verified，平台未显示时记录 pending_review。
+
+批量维护容器需设置 `PYTHONPATH=/app`，并挂载修复脚本。先调用 `app.worker.begin_subtitle_maintenance()` 暂缓队列；遇到正在提交的稿件会拒绝开始。维护完成自动恢复快照，异常退出后最多两小时恢复；原有用户暂停保持。

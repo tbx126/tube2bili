@@ -137,10 +137,10 @@ async def repair(task_id):
     task = store.task(task_id)
     task['payload']['subtitle_revision'] = POLICY
     store.update(task_id, payload=task['payload'])
-    await perform('subtitles', task_id)
+    await asyncio.wait_for(perform('subtitles', task_id), timeout=180)
     state['status'] = 'submitted'
     qwen.save(checkpoint, state)
-    state['status'] = 'verified' if await visible(store.task(task_id), folder) else 'pending_review'
+    state['status'] = 'verified' if await asyncio.wait_for(visible(store.task(task_id), folder), timeout=90) else 'pending_review'
     state['updated'] = time.time()
     qwen.save(checkpoint, state)
     store.event(task_id, '开头短语字幕已更新并验证' if state['status'] == 'verified' else '开头短语字幕已提交，等待 B 站审核显示')
@@ -157,17 +157,39 @@ async def main():
         parser.error('Choose one task or explicitly --all')
     ids = [args.task] if args.task else [row['id'] for row in store.rows(
         "SELECT id FROM tasks WHERE deleted=0 AND status IN ('completed','failed','waiting') ORDER BY updated DESC")]
+    from app import worker
+    if args.all:
+        worker.begin_subtitle_maintenance()
+        state = store.get_runtime_state(worker.MAINTENANCE_STATE, {}) or {}
+        if state.get('owner') != POLICY or not worker.maintenance_active():
+            raise SystemExit('Bulk repair requires active subtitle maintenance; ordinary workers must be paused first')
     counts = {}
-    for task_id in ids:
-        try:
-            result = await repair(task_id)
-        except Exception as error:
-            # Keep credentials, signed URLs and provider response bodies private.
-            result = {'id': task_id, 'status': 'error', 'error': type(error).__name__}
-            if isinstance(error, (Waiting, RetryLater)):
-                result['detail'] = str(error)
-        print(json.dumps(result, ensure_ascii=False), flush=True)
-        counts[result['status']] = counts.get(result['status'], 0) + 1
+    try:
+        for task_id in ids:
+            if args.all:
+                state = store.get_runtime_state(worker.MAINTENANCE_STATE, {}) or {}
+                if state.get('owner') != POLICY:
+                    break
+                state['until'] = time.time() + 7200
+                store.set_runtime_state(worker.MAINTENANCE_STATE, state)
+            try:
+                result = await repair(task_id)
+            except Exception as error:
+                # Keep credentials, signed URLs and provider response bodies private.
+                result = {'id': task_id, 'status': 'error', 'error': type(error).__name__}
+                if isinstance(error, (Waiting, RetryLater)):
+                    result['detail'] = str(error)
+            print(json.dumps(result, ensure_ascii=False), flush=True)
+            counts[result['status']] = counts.get(result['status'], 0) + 1
+            if result.get('error') == 'ProviderBlocked':
+                break
+    finally:
+        if args.all:
+            state = store.get_runtime_state(worker.MAINTENANCE_STATE, {}) or {}
+            if state.get('owner') == POLICY:
+                state['until'] = 0
+                store.set_runtime_state(worker.MAINTENANCE_STATE, state)
+                worker.maintenance_active()
     print(json.dumps({'summary': counts}), flush=True)
     if args.all:
         store.notice('开头短语字幕更新结果：' + json.dumps(counts, ensure_ascii=False))

@@ -23,8 +23,44 @@ AI_BACKOFF_STATE = 'language_api_backoff'
 MAINTENANCE_STATE = 'subtitle_maintenance'
 
 
+def begin_subtitle_maintenance():
+    now = time.time()
+    with store.connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        previous = db.execute('SELECT value FROM runtime_state WHERE key=?', (MAINTENANCE_STATE,)).fetchone()
+        state = json.loads(previous['value']) if previous else {}
+        if state.get('paused') and state.get('owner') == 'intro-word-phrases-v1':
+            state['until'] = now + 7200
+        else:
+            rows = [dict(row) for row in db.execute("SELECT id,status,stage,next_run,error FROM tasks WHERE deleted=0 AND status IN ('queued','retrying','running')")]
+            if any(row['status'] == 'running' and row['stage'] == 'publish' for row in rows):
+                raise Waiting('当前投稿提交中，请等待结果后再开始字幕维护')
+            state = {'owner': 'intro-word-phrases-v1', 'until': now + 7200,
+                     'reason': '正在更新开头短语字幕，普通队列暂缓，完成后自动恢复', 'paused': rows}
+            for row in rows:
+                db.execute("UPDATE tasks SET status='paused',error=?,updated=? WHERE id=?", ('维护中：更新开头短语字幕', now, row['id']))
+        db.execute('INSERT INTO runtime_state(key,value,updated) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated=excluded.updated',
+                   (MAINTENANCE_STATE, json.dumps(state, ensure_ascii=False), now))
+    return len(state.get('paused', []))
+
+
 def maintenance_active():
-    return (store.get_runtime_state(MAINTENANCE_STATE, {}) or {}).get('until', 0) > time.time()
+    state = store.get_runtime_state(MAINTENANCE_STATE, {}) or {}
+    if state.get('until', 0) > time.time():
+        return True
+    if state.get('paused'):
+        with store.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            current = db.execute('SELECT value FROM runtime_state WHERE key=?', (MAINTENANCE_STATE,)).fetchone()
+            state = json.loads(current['value']) if current else {}
+            if state.get('until', 0) > time.time():
+                return True
+            for saved in state.get('paused', []):
+                db.execute("UPDATE tasks SET status=?,next_run=?,error=?,updated=? WHERE id=? AND status='paused' AND error=?",
+                    ('queued' if saved['status'] == 'running' else saved['status'], saved['next_run'], saved['error'],
+                     time.time(), saved['id'], '维护中：更新开头短语字幕'))
+            db.execute('UPDATE runtime_state SET value=?,updated=? WHERE key=?', ('{}', time.time(), MAINTENANCE_STATE))
+    return False
 
 
 def clear_youtube_rate_limit():

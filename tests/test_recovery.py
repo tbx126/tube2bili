@@ -248,3 +248,24 @@ def test_maintenance_pauses_polling_and_expires(client, monkeypatch):
     worker.poll_channels()
     store.set_runtime_state(worker.MAINTENANCE_STATE, {'until': time.time() - 1})
     assert not worker.maintenance_active()
+
+
+def test_maintenance_restores_only_its_own_paused_tasks(client):
+    task_id = store.enqueue('abcdefghijk', 'url')
+    other = store.enqueue('abcdefghijl', 'url')
+    store.update(task_id, status='paused', error='维护中：更新开头短语字幕')
+    store.update(other, status='paused')
+    store.set_runtime_state(worker.MAINTENANCE_STATE, {'until': 1, 'paused': [
+        {'id': task_id, 'status': 'running', 'next_run': 0, 'error': ''}]})
+    assert not worker.maintenance_active()
+    assert store.task(task_id)['status'] == 'queued'
+    assert store.task(other)['status'] == 'paused'
+
+
+def test_maintenance_never_interrupts_an_upload(client):
+    tid = store.enqueue('abcdefghijk', 'url')
+    store.update(tid, status='running', stage='publish')
+    with pytest.raises(media.Waiting, match='投稿提交中'):
+        worker.begin_subtitle_maintenance()
+    assert store.task(tid)['status'] == 'running'
+    assert not store.get_runtime_state(worker.MAINTENANCE_STATE)
