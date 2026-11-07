@@ -193,6 +193,23 @@ def test_asr_billing_error_is_classified(client, monkeypatch):
         language.transcribe(store.task(task_id), settings, folder, 30)
 
 
+def test_public_1033_recovery_requires_three_checks_and_only_once_per_outage():
+    watch = load_script('watch_nas_network')
+    state = {}
+    check = lambda status=530, missing=True, proxy=True, now=10000: watch.should_restart_public(
+        state, status, missing, True, proxy, True, now)
+    assert not check()
+    assert not check()
+    assert not check(proxy=False)
+    assert check()
+    state.update(public_restart_attempted=True, restart_at=10000)
+    assert not check(now=12000)
+    assert not check(502, False, now=12000)
+    assert not check(200, False, now=12000)
+    assert not state['public_restart_attempted']
+    assert state['public_failures'] == 0
+
+
 def test_stale_monitor_cannot_claim_healthy(client):
     (store.DATA / 'network-health.json').write_text(json.dumps({'checked_at': time.time() - 600,
         'proxy': True, 'tunnel': True, 'app': True}))
