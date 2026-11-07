@@ -5,5 +5,7 @@ pydantic-settings==2.15.0
 python-multipart==0.0.32
 srt==3.5.3
 yt-dlp[default]==2026.8.19
+bgutil-ytdlp-pot-provider==2.0.0
 biliup==1.2.4
 bilibili-api-python==17.4.2
+qrcode[pil]==8.2

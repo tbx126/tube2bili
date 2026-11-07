@@ -1,0 +1,10 @@
+[Unit]
+Description=Validate and refresh Tube2Bili NAS proxy subscription
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/sbin/tube2bili-proxy-refresh
+TimeoutStartSec=120
+UMask=0077
