@@ -41,7 +41,9 @@ def public_status():
     client = urllib.request.build_opener(urllib.request.ProxyHandler(
         {'https': 'http://127.0.0.1:17897'}))
     try:
-        with client.open('https://tube2bili.tbx12.com/healthz', timeout=10) as response:
+        request = urllib.request.Request('https://tube2bili.tbx12.com/healthz',
+            headers={'User-Agent': 'Tube2Bili-NetworkWatch/1.0', 'Cache-Control': 'no-cache'})
+        with client.open(request, timeout=10) as response:
             return response.status, False
     except urllib.error.HTTPError as error:
         # A ready connector does not prove that the public hostname is routed.
