@@ -154,6 +154,10 @@ function drawDetail() {
   else if (t.error) callout = `<div class="callout"><pre>${esc(t.error)}</pre></div>`;
 
   const actions = [];
+  if (t.stage === 'download' && !p.assets_deleted && !p.bvid && !p.publication_started) {
+    actions.push(`<a class="btn" href="https://9xbuddy.in/process?url=${encodeURIComponent(t.url)}" target="_blank" rel="noopener noreferrer">用 9xbuddy 下载 ${icon.out}</a>`);
+    if (['failed','waiting','paused'].includes(t.status)) actions.push(`<button class="btn" data-action="import-source" data-id="${id}">补交 MP4</button>`);
+  }
   if (ACTIVE.includes(t.status) && !(t.status === 'running' && t.stage === 'publish')) actions.push(`<button class="btn" data-action="task-action" data-command="pause" data-id="${id}">暂停</button>`);
   if (['paused','cancelled'].includes(t.status) && canResume(t)) actions.push(`<button class="btn btn-dark" data-action="task-action" data-command="resume" data-id="${id}">继续</button>`);
   if (!['completed','cancelled'].includes(t.status) && !(t.status === 'running' && t.stage === 'publish')) actions.push(`<button class="btn btn-quiet" data-action="task-action" data-command="cancel" data-id="${id}">取消任务</button>`);
@@ -350,6 +354,12 @@ document.addEventListener('click', async e => {
       if(!confirm('删除队列记录？本地文件、B 站稿件和投稿去重信息会保留，重新添加原链接可找回。')) return;
       await api(`/tasks/${id}`,'DELETE'); taskId=null; detailData=null; location.hash='#tasks'; await refresh(); toast('记录已删除，本地文件已保留'); return;
     }
+    if (action === 'import-source') {
+      modal('补交 MP4', `<form id="source-import-form" data-id="${esc(id)}">
+        <label class="field">与该任务对应的视频<input type="file" name="source" accept=".mp4,video/mp4" required></label>
+        <p class="hint">请选择有权转载且带原声的 MP4。导入后会自动继续字幕处理和投稿。如果公网提示文件过大，请改用 NAS 局域网入口。</p>
+        <button class="btn btn-dark" type="submit">上传并继续</button></form>`);
+    }
     if (action === 'task-action') {
       const command = button.dataset.command;
       if (command === 'cancel' && !confirm('取消这个任务？已发布到 B 站的视频不会被撤回。')) return;
@@ -377,6 +387,24 @@ document.addEventListener('submit', async e => {
   const button = form.querySelector('[type=submit]'); if (button) button.disabled = true;
   try {
     const data = new FormData(form);
+    if (form.id === 'source-import-form') {
+      const file = data.get('source');
+      if (!file.size || file.size > 512 * 1024 ** 2) throw new Error('请选择不超过 512 MiB 的 MP4');
+      button.textContent = '正在上传…';
+      const response = await fetch(`/api/tasks/${form.dataset.id}/source-video`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'video/mp4', 'X-Requested-With': 'Tube2Bili'},
+        body: file,
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.detail || (response.status === 413 ? '上传超过公网限制，请使用 NAS 局域网入口' : '上传失败'));
+      }
+      $('#modal').close();
+      toast('原片已导入，任务将从字幕阶段继续');
+      await refresh();
+      await loadDetail();
+    }
     if (form.id === 'login-form') { await api('/login', 'POST', {password: data.get('password')}); form.reset(); $('#login-error').textContent = ''; $('#login').hidden = true; $('#shell').hidden = false; await Promise.all([refresh(false), loadSettings()]); await navigate(); }
     if (form.id === 'add-form') {
       const url = data.get('url').trim();
@@ -400,7 +428,12 @@ document.addEventListener('submit', async e => {
     if (form.id === 'credential-form') { const file = data.get('file'); if (file.size > 2000000) throw new Error('登录文件不能超过 2 MB'); await api('/credentials/'+form.dataset.provider, 'PUT', {content: await file.text()}); $('#modal').close(); await loadSettings(); if (page === 'settings') await drawSettings(); toast('登录凭证已保存'); }
     if (form.id === 'link-form') { await api(`/tasks/${form.dataset.id}/action`, 'POST', {action: 'link', bvid: data.get('bvid')}); toast('已关联稿件，将继续提交字幕'); await refresh(); await loadDetail(); }
   } catch (error) { if (form.id === 'login-form') $('#login-error').textContent = error.message; else toast(error.message); }
-  finally { if (button && button.isConnected) button.disabled = false; }
+  finally {
+    if (button && button.isConnected) {
+      button.disabled = false;
+      if (form.id === 'source-import-form') button.textContent = '上传并继续';
+    }
+  }
 });
 document.addEventListener('input', e => {
   if (e.target.id === 'task-search') { query = e.target.value; drawTaskList(); }

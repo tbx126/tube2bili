@@ -7,6 +7,7 @@ import re
 import secrets
 import shutil
 import sys
+import tempfile
 import time
 import uuid
 import httpx
@@ -18,10 +19,12 @@ from fastapi import FastAPI, HTTPException, Request, Response, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, ValidationError
 
 from . import accounts, config, store, worker, dashboard
 from .media import Waiting, is_netscape_cookie_file, youtube_url
+from .media_import import MAX_BYTES, eligible, install_source
 
 load_dotenv()
 ROOT = Path(__file__).resolve().parent
@@ -226,6 +229,23 @@ class Action(BaseModel):
 class CollectionTarget(BaseModel):
     season_id: int = Field(gt=0)
     section_id: int = Field(0, ge=0)
+
+
+@app.put('/api/tasks/{task_id}/source-video')
+async def task_source_video(task_id: str, request: Request):
+    eligible(store.task(task_id))
+    limit = min(MAX_BYTES, max(0, shutil.disk_usage(store.DATA).free
+                              - int(config.get().min_free_gb * 1024**3)))
+    with tempfile.TemporaryDirectory(prefix='source-upload-', dir=store.DATA) as directory:
+        path = Path(directory) / 'video.mp4'
+        size = 0
+        with path.open('wb') as output:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > limit:
+                    raise HTTPException(413, '文件超过 512 MiB 或 NAS 可用空间不足')
+                await run_in_threadpool(output.write, chunk)
+        return await run_in_threadpool(install_source, task_id, path)
 
 
 @app.put('/api/tasks/{task_id}/collection')
