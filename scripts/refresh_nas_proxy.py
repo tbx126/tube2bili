@@ -17,15 +17,17 @@ import yaml
 
 ROOT = Path('/vol2/docker/mihomo-system/config')
 CONFIG = ROOT / 'config.yaml'
+PROBE_URL = 'https://www.youtube.com/generate_204'
 
 
 def probe_running(value):
     port = int(value['mixed-port'])
     client = urllib.request.build_opener(urllib.request.ProxyHandler(
         {'https': f'http://127.0.0.1:{port}'}))
-    for _ in range(3):
+    # A large fallback group may still be checking cold routes after reload.
+    for _ in range(8):
         try:
-            with client.open('https://www.youtube.com/generate_204', timeout=8) as response:
+            with client.open(PROBE_URL, timeout=8) as response:
                 if response.status == 204:
                     return
         except Exception:
@@ -55,7 +57,7 @@ def probe_candidate(value):
                 if process.poll() is not None:
                     break
                 try:
-                    with client.open('https://www.youtube.com/generate_204', timeout=8) as response:
+                    with client.open(PROBE_URL, timeout=8) as response:
                         if response.status == 204:
                             return
                 except Exception:
@@ -91,7 +93,7 @@ def merge_nodes(current, incoming):
     current['proxies'] = nodes
     current.pop('proxy-providers', None)
     current['proxy-groups'] = [{'name': 'PROXY', 'type': 'fallback', 'proxies': names,
-        'url': 'https://www.gstatic.com/generate_204', 'interval': 180, 'lazy': False,
+        'url': PROBE_URL, 'interval': 180, 'lazy': False,
         'timeout': 8000}]
     # Keep local networks direct, but route Tunnel transport through working nodes.
     current['rules'] = [rule.replace('PROCESS-NAME,cloudflared,DIRECT', 'PROCESS-NAME,cloudflared,PROXY')

@@ -6,5 +6,5 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/python3 /usr/local/sbin/tube2bili-proxy-refresh
-TimeoutStartSec=120
+TimeoutStartSec=240
 UMask=0077
