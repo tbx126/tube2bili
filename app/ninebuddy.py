@@ -33,12 +33,12 @@ def acquire(task, settings, folder):
     limit = min(MAX_BYTES, shutil.disk_usage(folder).free - settings.min_free_gb * 1024**3)
     if limit <= 0:
         return None
-    deadline = time.monotonic() + 250
+    deadline = time.monotonic() + 340
     store.event(task['id'], '正在尝试 9xbuddy 下载')
     try:
         with tempfile.TemporaryDirectory(prefix='.ninebuddy-', dir=folder) as temp:
             video = Path(temp) / 'source.mp4'
-            with httpx.Client(timeout=httpx.Timeout(18, read=235), trust_env=False) as client:
+            with httpx.Client(timeout=httpx.Timeout(18, read=320), trust_env=False) as client:
                 with client.stream('POST', endpoint + '/download', json={'id': task['video_id']}) as response:
                     response.raise_for_status()
                     size = int(response.headers.get('content-length', 0))

@@ -117,6 +117,18 @@ def local_source(args_file):
     return None
 
 
+def fetch_subscription(path):
+    url = path.read_text().strip()
+    if not url.startswith('https://'):
+        raise ValueError('HTTPS subscription required')
+    req = urllib.request.Request(url, headers={'User-Agent': 'clash.meta'})
+    with urllib.request.urlopen(req, timeout=30) as response:
+        raw = response.read(2_000_001)
+    if len(raw) > 2_000_000:
+        raise ValueError('Subscription too large')
+    return raw
+
+
 def main():
     import fcntl
     parser = argparse.ArgumentParser(description=__doc__)
@@ -130,17 +142,30 @@ def main():
         if source:
             raw = source.read_bytes()
         else:
-            url = (ROOT / 'subscription.url').read_text().strip()
-            if not url.startswith('https://'):
-                raise ValueError('HTTPS subscription required')
-            req = urllib.request.Request(url, headers={'User-Agent': 'clash.meta'})
-            with urllib.request.urlopen(req, timeout=30) as response:
-                raw = response.read(2_000_001)
+            raw = fetch_subscription(ROOT / 'subscription.url')
         if len(raw) > 2_000_000:
             raise ValueError('Subscription too large')
         current = yaml.safe_load(CONFIG.read_text())
         previous = copy.deepcopy(current)
-        value = merge_nodes(current, yaml.safe_load(raw))
+        incoming = yaml.safe_load(raw)
+        backup_url = ROOT / 'backup-subscription.url'
+        if source and backup_url.is_file():
+            # A broken subscription must never replace a working configuration.
+            data = yaml.safe_load(fetch_subscription(backup_url))
+            if not isinstance(data, dict) or not isinstance(data.get('proxies'), list):
+                raise ValueError('Invalid backup subscription')
+            unique = {}
+            for node in data['proxies']:
+                if isinstance(node, dict) and isinstance(node.get('name'), str):
+                    unique.setdefault(node['name'], node)
+            backup = merge_nodes({'rules': []}, {'proxies': list(unique.values())})
+            primary = incoming['proxies']
+            names = {node['name'] for node in primary}
+            additions = [node for node in backup['proxies'] if node['name'] not in names]
+            if not additions:
+                raise ValueError('No distinct backup nodes')
+            incoming = {'proxies': [*primary, *additions]}
+        value = merge_nodes(current, incoming)
         if value == previous:
             print(json.dumps({'nodes': len(value['proxies']), 'changed': False}))
             return

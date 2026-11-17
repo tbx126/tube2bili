@@ -6,12 +6,33 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pipeline } from 'node:stream/promises';
+import { fileURLToPath } from 'node:url';
 
 const maxBytes = 512 * 1024 ** 2;
 const provider = 'https://9xbuddy.in';
 let busy = false;
 
 class DownloadError extends Error {}
+
+async function mergeHd(dir, tracks, signal) {
+  const work = spawn('python3', [fileURLToPath(new URL('./merge_hd.py', import.meta.url)), dir], {
+    stdio: ['pipe', 'ignore', 'ignore'],
+    signal: AbortSignal.any([signal, AbortSignal.timeout(85_000)]),
+  });
+  work.stdin.on('error', () => {});
+  const done = new Promise(resolve => {
+    work.once('error', () => {});
+    work.once('close', code => resolve(code === 0));
+  });
+  work.stdin.end(JSON.stringify({ ...tracks, proxy: process.env.NINEBUDDY_PROXY || '' }));
+  if (!await done) {
+    await Promise.all(['hd-video.mp4', 'hd-audio.m4a', 'hd.mp4'].map(name =>
+      rm(join(dir, name), { force: true })));
+    return null;
+  }
+  const file = join(dir, 'hd.mp4');
+  return { file, size: (await stat(file)).size };
+}
 
 async function download(id, dir, signal) {
   const browser = spawn('chromium-headless-shell', [
@@ -102,14 +123,23 @@ async function download(id, dir, signal) {
       const title = document.querySelector('h1')?.textContent?.trim();
       const links = [...document.querySelectorAll('a[href]')].filter(link =>
         link.origin === location.origin && /^\/(?:[a-z-]+\/)?download\//.test(link.pathname));
-      const choices = [480, 360, 240, 144].map(height => links.find(link => {
+      const choices = [1080, 720, 480, 360, 240, 144].map(height => links.find(link => {
         const row = link.closest('article')?.innerText || '';
-        return /\bMP4\b/i.test(row) && new RegExp('\\b' + height + 'p\\b','i').test(row)
+        return /\bMP4\b/i.test(row) && new RegExp('\\b' + height + 'p(?:\\d+)?\\b','i').test(row)
           || new URL(link.href).searchParams.get('customName')?.endsWith('_' + height + 'p');
       })).filter(Boolean).map(link => link.href);
-      if (!choices.length || !title) return;
+      const media = [...document.querySelectorAll('article a[href]')].filter(link =>
+        link.protocol === 'https:' && (link.hostname.endsWith('.googlevideo.com') && link.pathname === '/videoplayback'
+          || link.hostname.endsWith('.9xbud.com') && link.pathname.startsWith('/down/')));
+      const hd = media.find(link => /\bMP4\b/i.test(link.closest('article').innerText)
+        && /\b1080p(?:\d+)?\b/i.test(link.closest('article').innerText));
+      const audio = media.filter(link => /\bM4A\b/i.test(link.closest('article').innerText))
+        .sort((a, b) => Number(b.hostname.endsWith('.9xbud.com')) - Number(a.hostname.endsWith('.9xbud.com')))
+        .map(link => link.href);
+      const tracks = hd && audio.length ? { video: hd.href, audio } : null;
+      if ((!choices.length && !tracks) || !title) return;
       const uploader = document.body.innerText.match(/(?:Uploader|Uploaded by|上传者)\s*:?\s*([^\n/]+)/i)?.[1]?.trim();
-      return { choices, title, uploader };
+      return { choices, tracks, title, uploader };
     };
     await navigate(url);
     let result;
@@ -122,6 +152,12 @@ async function download(id, dir, signal) {
     }
     const choices = result.choices.map(link => new URL(link)).filter(link =>
       link.pathname.split('/download/')[1]?.startsWith(id + '-'));
+    const alreadyCombined1080 = choices[0]?.searchParams.get('customName')?.endsWith('_1080p');
+    if (result.tracks && !alreadyCombined1080) {
+      const hd = await mergeHd(dir, result.tracks, signal);
+      if (hd) return { ...hd, title: result.title, uploader: result.uploader };
+      console.warn('9xbuddy 1080p tracks unavailable; trying a prepared MP4');
+    }
     if (!choices.length) throw new DownloadError('formats');
     const prepare = choices[0];
     await navigate(prepare.href);
@@ -180,7 +216,7 @@ createServer(async (req, res) => {
     const { id } = JSON.parse(body);
     if (typeof id !== 'string' || !/^[\w-]{11}$/.test(id)) throw new Error('Invalid input');
     dir = await mkdtemp(join(tmpdir(), 'ninebuddy-'));
-    const result = await download(id, dir, AbortSignal.any([closed.signal, AbortSignal.timeout(225000)]));
+    const result = await download(id, dir, AbortSignal.any([closed.signal, AbortSignal.timeout(310000)]));
     res.writeHead(200, {
       'content-type': 'video/mp4', 'content-length': result.size,
       'x-video-title': encodeURIComponent(result.title.slice(0, 1000)),

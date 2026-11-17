@@ -193,7 +193,7 @@ def download(task, settings, folder):
     video_args = [
         '--no-playlist', '--write-info-json', '--write-thumbnail', '--convert-thumbnails', 'jpg',
         '--merge-output-format', 'mp4',
-        '-f', 'bv*[height<=1080][ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/bv*[height<=1080]+ba/b',
+        '-f', 'bv*[height=1080][ext=mp4]+ba[ext=m4a]/b[height=1080][ext=mp4]/bv*[height=1080]+ba/b[height=1080]/bv*[height<=1080][ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[height<=1080][ext=mp4]/bv*[height<=1080]+ba/b[height<=1080]',
         '--remux-video', 'mp4', '-o', 'source.%(ext)s', task['url']]
     from .youtube import execute
     if alternate is not None:

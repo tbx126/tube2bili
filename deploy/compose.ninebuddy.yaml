@@ -1,18 +1,18 @@
 services:
   ninebuddy:
-    image: tube2bili-ninebuddy:0.2.0-rc.44
+    image: tube2bili-ninebuddy:0.2.0-rc.45
     build:
       context: ./services/ninebuddy
     restart: unless-stopped
     init: true
     read_only: true
     tmpfs:
-      - /tmp:size=640m,mode=1777
+      - /tmp:size=1088m,mode=1777
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges:true
-    mem_limit: 1200m
+    mem_limit: 1600m
     cpus: 1.5
     pids_limit: 160
     environment:
