@@ -1,6 +1,7 @@
 """Download the two media links offered by 9xbuddy and mux without re-encoding."""
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import urllib.request
@@ -32,13 +33,21 @@ def save(client, url, target, limit):
     })
     count = 0
     with client.open(request, timeout=12) as response, target.open('wb') as output:
+        expected = int(response.headers.get('Content-Length', '0'))
+        whole_range = re.fullmatch(r'bytes 0-(\d+)/(\d+)', response.headers.get('Content-Range', ''))
+        if response.status == 206 and whole_range and int(whole_range[1]) + 1 == int(whole_range[2]):
+            expected = int(whole_range[2])
+        elif response.status != 200:
+            raise ValueError('Incomplete media response')
+        if expected > limit:
+            raise ValueError('Incomplete or oversized media response')
         while chunk := response.read(128 * 1024):
             count += len(chunk)
             if count > limit:
                 raise ValueError('Media size limit reached')
             output.write(chunk)
-    if not count:
-        raise ValueError('Empty media')
+    if not count or (expected and count != expected):
+        raise ValueError('Incomplete media')
     return count
 
 
@@ -60,7 +69,7 @@ def main():
                 audio.unlink(missing_ok=True)
         if not audio.exists():
             raise ValueError('No audio stream available')
-        subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-protocol_whitelist', 'file',
+        subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-xerror', '-protocol_whitelist', 'file',
                         '-i', str(video), '-protocol_whitelist', 'file', '-i', str(audio),
                         '-map', '0:v:0', '-map', '1:a:0', '-c', 'copy', str(output)],
                        check=True, timeout=15, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
