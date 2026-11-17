@@ -1,5 +1,11 @@
 # NAS 故障恢复（2026-11-01）
 
+## 9xbuddy 自动下载
+
+- 启用 `deploy/compose.ninebuddy.yaml` 后，后台先尝试 9xbuddy 的 480p 或更低的带声 MP4。浏览器只接收 YouTube 视频 ID，通过 `NINEBUDDY_PROXY` 使用 NAS 代理。服务使用独立容器，无宿主目录和对外端口。
+- 服务不可用、超时、文件超过 512 MiB 或音视频校验失败后，任务自动尝试原有 yt-dlp。下载成功后仍使用原任务的字幕、投稿和合集步骤。
+- 附加配置与主配置一起调用：`docker compose -f compose.yaml -f deploy/compose.ninebuddy.yaml up -d --build`。NAS 的主配置已合入服务定义，旧配置保留在 `compose.yaml.before-rc40`。
+
 ## 网络
 
 - 订阅地址保存在 NAS `/vol2/docker/mihomo-system/config/subscription.url`，权限 0600，不加入 Git。

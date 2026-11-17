@@ -43,3 +43,7 @@ every use. See `docs/RECOVERY.md` for the Token Plan scope restriction reviewed
 during this repair.
 
 The 2026-11-06 revision also adds no runtime dependency. Existing package and system notices are retained by deriving the private NAS image from rc.36.
+
+## Optional 9xbuddy browser service
+
+The optional service launches Debian's `chromium-headless-shell` and uses Node.js built-ins. It adds no Python or npm packages. Debian provides the browser and its native dependency notices under `/usr/share/doc/<package>/copyright`, with shared license texts in `/usr/share/common-licenses`. Keep these files with the installed image. The NAS browser build uses the downloaded Debian Bookworm main/security packages reviewed on that host. Application source is published separately from the browser image.
