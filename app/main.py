@@ -291,9 +291,12 @@ def task_action(task_id: str, value: Action):
                 raise HTTPException(409, '当前任务不能直接重试；请先核对状态')
             holds = [h['until'] for h in dashboard.cooldowns() if task['stage'] in h['stages']]
             until = max(holds, default=0)
+            payload = task['payload']
+            if task['stage'] == 'download' and (value.action == 'retry' or task['status'] in ('failed', 'waiting', 'retrying')):
+                payload['verify_both_downloads'] = True
             store.update(task_id, status='retrying' if until else 'queued',
                          attempts=task['attempts'] if task['status'] == 'retrying' else 0,
-                         next_run=until, error='服务冷却中，到期自动继续' if until else '')
+                         next_run=until, error='服务冷却中，到期自动继续' if until else '', payload=payload)
         elif value.action == 'link':
             if active or task['status'] != 'reconcile' or not re.fullmatch(r'BV[0-9A-Za-z]{10}', value.bvid):
                 raise HTTPException(409, '仅可为待核对任务填写有效 BV 号')

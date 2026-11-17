@@ -200,7 +200,8 @@ def process(task_id):
                 source = download(task, settings, folder)
                 if source.get('download_provider') != '9xbuddy':
                     clear_youtube_backoffs()
-                store.update(task_id, title=source.get('title') or task['video_id'], stage='translate', progress=20, attempts=0)
+                payload.pop('verify_both_downloads', None)
+                store.update(task_id, title=source.get('title') or task['video_id'], stage='translate', progress=20, attempts=0, payload=payload)
             elif stage == 'translate':
                 source = json.loads((folder / 'source.json').read_text('utf-8'))
                 metadata = translate(task, settings, folder, source)

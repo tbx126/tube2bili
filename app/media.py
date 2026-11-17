@@ -190,14 +190,32 @@ def download(task, settings, folder):
         return json.loads((folder / 'source.json').read_text('utf-8'))
     from .ninebuddy import acquire
     alternate = acquire(task, settings, folder)
-    if alternate is not None:
-        return alternate
     video_args = [
         '--no-playlist', '--write-info-json', '--write-thumbnail', '--convert-thumbnails', 'jpg',
         '--merge-output-format', 'mp4',
         '-f', 'bv*[height<=1080][ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/bv*[height<=1080]+ba/b',
         '--remux-video', 'mp4', '-o', 'source.%(ext)s', task['url']]
     from .youtube import execute
+    if alternate is not None:
+        if task.get('attempts') or task.get('payload', {}).get('verify_both_downloads'):
+            # Test actual media transfer on the second route without downloading
+            # a second full copy or modifying the already accepted source.
+            import tempfile
+            with tempfile.TemporaryDirectory(prefix='.yt-dlp-check-', dir=folder) as temp:
+                probe_args = ['--test', '--no-playlist', '--retries', '0',
+                              '-f', video_args[video_args.index('-f') + 1],
+                              '-o', 'check.%(ext)s', task['url']]
+                store.event(task['id'], '9xbuddy 已取得原片，正在验证 yt-dlp 媒体下载')
+                try:
+                    execute(settings, probe_args, Path(temp), task['id'], timeout=45)
+                except YouTubeError as error:
+                    store.event(task['id'], f'yt-dlp 验证未通过：{error}；使用已下载原片继续')
+                except (Waiting, TimeoutError, OSError):
+                    store.event(task['id'], 'yt-dlp 验证未完成；使用已下载原片继续')
+                else:
+                    store.event(task['id'], '两条下载渠道均通过验证，使用 9xbuddy 原片继续')
+        return alternate
+    store.event(task['id'], '正在尝试 yt-dlp 下载')
     # Keep subtitle endpoints out of the critical video download. YouTube can
     # rate-limit captions independently; yt-dlp otherwise exits nonzero and
     # prevents a usable video from reaching the ASR fallback.
