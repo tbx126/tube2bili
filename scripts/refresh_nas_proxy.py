@@ -93,8 +93,8 @@ def merge_nodes(current, incoming):
     current['proxies'] = nodes
     current.pop('proxy-providers', None)
     current['proxy-groups'] = [{'name': 'PROXY', 'type': 'fallback', 'proxies': names,
-        'url': PROBE_URL, 'interval': 180, 'lazy': False,
-        'timeout': 8000}]
+        'url': PROBE_URL, 'interval': 60, 'lazy': False,
+        'timeout': 6000, 'expected-status': 204, 'max-failed-times': 2}]
     # Keep local networks direct, but route Tunnel transport through working nodes.
     current['rules'] = [rule.replace('PROCESS-NAME,cloudflared,DIRECT', 'PROCESS-NAME,cloudflared,PROXY')
         .replace('DOMAIN-SUFFIX,argotunnel.com,DIRECT', 'DOMAIN-SUFFIX,argotunnel.com,PROXY')
@@ -129,6 +129,23 @@ def fetch_subscription(path):
     if len(raw) > 2_000_000:
         raise ValueError('Subscription too large')
     return raw
+
+
+def clear_fallback_pin(value):
+    controller = value.get('external-controller', '')
+    port = controller.rpartition(':')[2]
+    if not port.isdecimal() or not 0 < int(port) <= 65535:
+        return
+    url = f'http://127.0.0.1:{port}/proxies/PROXY'
+    headers = {'Authorization': 'Bearer ' + str(value.get('secret', ''))}
+    client = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with client.open(urllib.request.Request(url, headers=headers), timeout=5) as response:
+        state = json.load(response)
+    if state.get('fixed'):
+        with client.open(urllib.request.Request(url, headers=headers, method='DELETE'), timeout=5) as response:
+            if response.status != 204:
+                raise ValueError('Could not clear fixed proxy policy')
+        print('Cleared manual selection from PROXY fallback')
 
 
 def main():
@@ -168,6 +185,14 @@ def main():
                 raise ValueError('No distinct backup nodes')
             incoming = {'proxies': [*primary, *additions]}
         value = merge_nodes(current, incoming)
+        if source and backup_url.is_file():
+            # Resolve new proxy hostnames without depending on an already
+            # working proxy or a single HTTPS resolver during startup.
+            dns = value.get('dns') or {}
+            bootstrap = dns.get('default-nameserver') or []
+            if dns.get('enable') and bootstrap:
+                dns['proxy-server-nameserver'] = list(dict.fromkeys(
+                    [*bootstrap, *dns.get('proxy-server-nameserver', [])]))
         if value == previous:
             print(json.dumps({'nodes': len(value['proxies']), 'changed': False}))
             return
@@ -187,8 +212,11 @@ def main():
         tmp.replace(CONFIG)
         try:
             subprocess.run(['systemctl', 'restart', 'mihomo-nas.service'], check=True)
+            if source and backup_url.is_file():
+                time.sleep(2)
+                clear_fallback_pin(value)
             probe_running(value)
-        except (subprocess.CalledProcessError, ValueError):
+        except (subprocess.CalledProcessError, OSError, ValueError):
             shutil.copy2(backup, CONFIG)
             subprocess.run(['systemctl', 'restart', 'mihomo-nas.service'], check=True)
             raise RuntimeError('Reload or health check failed; previous configuration restored') from None
