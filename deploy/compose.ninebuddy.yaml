@@ -1,6 +1,6 @@
 services:
   ninebuddy:
-    image: tube2bili-ninebuddy:0.2.0-rc.41
+    image: tube2bili-ninebuddy:0.2.0-rc.44
     build:
       context: ./services/ninebuddy
     restart: unless-stopped

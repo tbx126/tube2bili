@@ -26,6 +26,7 @@ async function download(id, dir, signal) {
   let chunk = '';
   let completed;
   let rejected = false;
+  let pageStatus = 0;
   const pending = new Map();
   const abort = () => {
     for (const callback of pending.values()) callback.reject(new DownloadError('browser'));
@@ -41,6 +42,9 @@ async function download(id, dir, signal) {
     while ((end = chunk.indexOf('\0')) !== -1) {
       const message = JSON.parse(chunk.slice(0, end));
       chunk = chunk.slice(end + 1);
+      if (message.method === 'Network.responseReceived' && message.params.type === 'Document') {
+        pageStatus = message.params.response.status;
+      }
       const callback = pending.get(message.id);
       if (callback) {
         pending.delete(message.id);
@@ -69,6 +73,7 @@ async function download(id, dir, signal) {
   try {
     const { targetId } = await call('Target.createTarget', { url: 'about:blank' });
     const { sessionId } = await call('Target.attachToTarget', { targetId, flatten: true });
+    await call('Network.enable', {}, sessionId);
     const evaluate = async fn => (await call('Runtime.evaluate', {
       expression: '(' + fn.toString() + ')()', returnByValue: true, userGesture: true,
     }, sessionId)).result?.value;
@@ -79,30 +84,47 @@ async function download(id, dir, signal) {
         if (value) return value;
         await delay(750, undefined, { signal });
       }
+      console.warn('9xbuddy page wait expired:', failure, 'HTTP', pageStatus || 'unknown');
       throw new DownloadError(failure);
     }
 
     await call('Browser.setDownloadBehavior', {
       behavior: 'allowAndName', downloadPath: dir, eventsEnabled: true,
     });
-    const url = provider + '/process?url=' + encodeURIComponent('https://www.youtube.com/watch?v=' + id);
-    await call('Page.navigate', { url }, sessionId);
-    const result = await waitFor(() => {
+    async function navigate(url) {
+      pageStatus = 0;
+      const result = await call('Page.navigate', { url }, sessionId);
+      if (result.errorText) throw new DownloadError('network');
+    }
+    const url = provider + '/zh/process?url=' + encodeURIComponent('https://www.youtube.com/watch?v=' + id);
+    const readFormats = () => {
       if (location.origin !== 'https://9xbuddy.in' || !/^\/(?:[a-z-]+\/)?process$/.test(location.pathname)) return;
       const title = document.querySelector('h1')?.textContent?.trim();
       const links = [...document.querySelectorAll('a[href]')].filter(link =>
         link.origin === location.origin && /^\/(?:[a-z-]+\/)?download\//.test(link.pathname));
-      const link = [480, 360, 240, 144].map(height => links.find(a =>
-        new URL(a.href).searchParams.get('customName')?.endsWith('_' + height + 'p'))).find(Boolean);
-      if (!link || !title) return;
+      const choices = [480, 360, 240, 144].map(height => links.find(link => {
+        const row = link.closest('article')?.innerText || '';
+        return /\bMP4\b/i.test(row) && new RegExp('\\b' + height + 'p\\b','i').test(row)
+          || new URL(link.href).searchParams.get('customName')?.endsWith('_' + height + 'p');
+      })).filter(Boolean).map(link => link.href);
+      if (!choices.length || !title) return;
       const uploader = document.body.innerText.match(/(?:Uploader|Uploaded by|上传者)\s*:?\s*([^\n/]+)/i)?.[1]?.trim();
-      return { url: link.href, title, uploader };
-    }, 35, 'formats');
-    const prepare = new URL(result.url);
-    if (!prepare.pathname.split('/download/')[1]?.startsWith(id + '-')) {
-      throw new DownloadError('formats');
+      return { choices, title, uploader };
+    };
+    await navigate(url);
+    let result;
+    try {
+      result = await waitFor(readFormats, 45, 'formats');
+    } catch (error) {
+      if (!(error instanceof DownloadError) || error.message !== 'formats' || pageStatus === 403 || pageStatus === 429) throw error;
+      await navigate(url);
+      result = await waitFor(readFormats, 45, 'formats');
     }
-    await call('Page.navigate', { url: prepare.href }, sessionId);
+    const choices = result.choices.map(link => new URL(link)).filter(link =>
+      link.pathname.split('/download/')[1]?.startsWith(id + '-'));
+    if (!choices.length) throw new DownloadError('formats');
+    const prepare = choices[0];
+    await navigate(prepare.href);
     await waitFor(() => {
       if (location.origin !== 'https://9xbuddy.in' || !/^\/(?:[a-z-]+\/)?download\//.test(location.pathname)) return;
       const link = [...document.querySelectorAll('a[href]')].find(a =>
@@ -158,7 +180,7 @@ createServer(async (req, res) => {
     const { id } = JSON.parse(body);
     if (typeof id !== 'string' || !/^[\w-]{11}$/.test(id)) throw new Error('Invalid input');
     dir = await mkdtemp(join(tmpdir(), 'ninebuddy-'));
-    const result = await download(id, dir, AbortSignal.any([closed.signal, AbortSignal.timeout(175000)]));
+    const result = await download(id, dir, AbortSignal.any([closed.signal, AbortSignal.timeout(225000)]));
     res.writeHead(200, {
       'content-type': 'video/mp4', 'content-length': result.size,
       'x-video-title': encodeURIComponent(result.title.slice(0, 1000)),

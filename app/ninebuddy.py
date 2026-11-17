@@ -15,6 +15,7 @@ from .media import check
 
 FAILURES = {
     'browser': '浏览器启动或运行失败',
+    'network': 'NAS 浏览器无法连接 9xbuddy，请检查代理出口',
     'formats': '未找到可准备的 MP4 格式',
     'prepare': '网页未能准备下载文件',
     'transfer': '文件传输中断或超过大小限制',
@@ -32,12 +33,12 @@ def acquire(task, settings, folder):
     limit = min(MAX_BYTES, shutil.disk_usage(folder).free - settings.min_free_gb * 1024**3)
     if limit <= 0:
         return None
-    deadline = time.monotonic() + 205
+    deadline = time.monotonic() + 250
     store.event(task['id'], '正在尝试 9xbuddy 下载')
     try:
         with tempfile.TemporaryDirectory(prefix='.ninebuddy-', dir=folder) as temp:
             video = Path(temp) / 'source.mp4'
-            with httpx.Client(timeout=httpx.Timeout(18, read=195), trust_env=False) as client:
+            with httpx.Client(timeout=httpx.Timeout(18, read=235), trust_env=False) as client:
                 with client.stream('POST', endpoint + '/download', json={'id': task['video_id']}) as response:
                     response.raise_for_status()
                     size = int(response.headers.get('content-length', 0))
