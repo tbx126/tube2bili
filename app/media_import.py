@@ -19,7 +19,7 @@ def eligible(task):
         raise HTTPException(409, '只能给尚未转载且已停止的下载任务补交视频')
 
 
-def install_source(task_id, path):
+def mp4_duration(path):
     try:
         probe = subprocess.run(
             ['ffprobe', '-v', 'error', '-protocol_whitelist', 'file', '-f', 'mov', '-show_entries',
@@ -37,7 +37,11 @@ def install_source(task_id, path):
         raise HTTPException(503, 'NAS 缺少 ffprobe，暂时无法校验上传文件') from exc
     except (subprocess.SubprocessError, ValueError, KeyError, TypeError) as exc:
         raise HTTPException(422, '请选择同时包含画面和音轨的有效 MP4') from exc
+    return duration
 
+
+def install_source(task_id, path):
+    duration = mp4_duration(path)
     with worker.ACTIVE_LOCK, store.connect() as db:
         db.execute('BEGIN IMMEDIATE')
         row = db.execute('SELECT * FROM tasks WHERE id=?', (task_id,)).fetchone()

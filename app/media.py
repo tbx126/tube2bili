@@ -188,6 +188,10 @@ def ytdlp(settings):
 def download(task, settings, folder):
     if (folder / 'source.json').exists():
         return json.loads((folder / 'source.json').read_text('utf-8'))
+    from .ninebuddy import acquire
+    alternate = acquire(task, settings, folder)
+    if alternate is not None:
+        return alternate
     video_args = [
         '--no-playlist', '--write-info-json', '--write-thumbnail', '--convert-thumbnails', 'jpg',
         '--merge-output-format', 'mp4',

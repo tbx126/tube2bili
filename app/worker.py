@@ -198,7 +198,8 @@ def process(task_id):
             payload = task['payload']
             if stage == 'download':
                 source = download(task, settings, folder)
-                clear_youtube_backoffs()
+                if source.get('download_provider') != '9xbuddy':
+                    clear_youtube_backoffs()
                 store.update(task_id, title=source.get('title') or task['video_id'], stage='translate', progress=20, attempts=0)
             elif stage == 'translate':
                 source = json.loads((folder / 'source.json').read_text('utf-8'))
