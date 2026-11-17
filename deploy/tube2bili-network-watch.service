@@ -1,0 +1,9 @@
+[Unit]
+Description=Check Tube2Bili proxy and Cloudflare Tunnel readiness
+After=network-online.target docker.service mihomo-nas.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/sbin/tube2bili-network-watch
+TimeoutStartSec=90
+UMask=0077

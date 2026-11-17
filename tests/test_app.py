@@ -8,7 +8,7 @@ import srt
 from app import config, store, worker, publishing
 from app.bili_bridge import subtitle_data
 from app.language import load_cues, budget
-from app.media import Waiting, Reconcile, youtube_url
+from app.media import Waiting, Reconcile, is_netscape_cookie_file, is_youtube_auth_error, youtube_auth_waiting, youtube_url
 
 
 VIDEO = 'https://www.youtube.com/watch?v=abcdefghijk'
@@ -29,6 +29,23 @@ def test_normalize_video(url):
 def test_reject_non_youtube(url):
     with pytest.raises(ValueError):
         youtube_url(url)
+
+
+def test_youtube_auth_detection_is_specific(tmp_path, monkeypatch):
+    assert is_youtube_auth_error("Sign in to confirm you're not a bot. Use --cookies for the authentication.")
+    assert not is_youtube_auth_error('WARNING: cookies were not found in the metadata')
+    monkeypatch.setattr(store, 'DATA', tmp_path)
+    with pytest.raises(Waiting, match='尚未配置 YouTube 登录 Cookie'):
+        raise youtube_auth_waiting()
+    (tmp_path / 'youtube-cookies.txt').write_text('# Netscape HTTP Cookie File\n', 'utf-8')
+    with pytest.raises(Waiting, match='不能仅据此判定 Cookie 失效'):
+        raise youtube_auth_waiting()
+
+
+@pytest.mark.parametrize('header', ['# HTTP Cookie File', '# Netscape HTTP Cookie File'])
+def test_netscape_cookie_header(header):
+    assert is_netscape_cookie_file('\ufeff' + header + '\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tvalue\n')
+    assert not is_netscape_cookie_file('{"cookies": []}')
 
 
 def test_auth_csrf_and_logout(client):
@@ -153,9 +170,38 @@ def test_deletion_keeps_task_and_dedupe(client):
     assert client.post(f'/api/tasks/{task_id}/action',json={'action':'retry'}).status_code == 409
 
 
+def test_queue_record_delete_hides_but_preserves_task_and_assets(client):
+    task_id = new_task(client)
+    folder = store.DATA / 'media' / task_id
+    folder.mkdir()
+    (folder / 'source.mp4').write_bytes(b'video')
+    store.update(task_id, status='paused')
+    assert client.delete(f'/api/tasks/{task_id}').status_code == 200
+    assert not client.get('/api/overview').json()['tasks']
+    assert store.task(task_id)['deleted'] == 1
+    assert folder.exists() and (folder / 'source.mp4').exists()
+    assert new_task(client) == task_id
+    assert store.task(task_id)['deleted'] == 0
+
+
+def test_queue_record_delete_rejects_active_and_reconcile(client):
+    task_id = new_task(client)
+    store.update(task_id, status='running')
+    assert client.delete(f'/api/tasks/{task_id}').status_code == 409
+    store.update(task_id, status='reconcile')
+    assert client.delete(f'/api/tasks/{task_id}').status_code == 409
+
+
+def test_queue_record_delete_rejects_unknown_publication(client):
+    task_id = new_task(client)
+    store.update(task_id, status='queued', stage='publish', payload={'publication_started': True})
+    assert client.delete(f'/api/tasks/{task_id}').status_code == 409
+
+
 def test_credentials_not_public_or_arbitrary_files(client):
     task_id = new_task(client)
-    value={'cookie_info':{'cookies':[{'name':name,'value':'SECRET'} for name in ('SESSDATA','bili_jct','DedeUserID')]}}
+    value={'cookie_info':{'cookies':[{'name':name,'value':'123' if name=='DedeUserID' else 'SECRET'} for name in ('SESSDATA','bili_jct','DedeUserID')]},
+           'sso':[], 'token_info': {'access_token':'SECRET','refresh_token':'SECRET','expires_in':3600,'mid':123}}
     assert client.put('/api/credentials/bilibili',json={'content':json.dumps(value)}).status_code == 200
     assert client.get('/api/settings').json()['bilibili_configured']
     assert 'SECRET' not in client.get('/api/settings').text

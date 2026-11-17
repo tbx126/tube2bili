@@ -1,0 +1,10 @@
+[Unit]
+Description=Restore Tube2Bili bridge routing after reboot or network recreation
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+Unit=tube2bili-routing.service
+
+[Install]
+WantedBy=timers.target

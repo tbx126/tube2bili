@@ -1,0 +1,1061 @@
+{
+  "reviewed": "2026-11-01",
+  "source": "https://pypi.org",
+  "scope": "Resolved existing requirements-dev.txt; only test-required subset installed locally. NAS retains rc34 runtime dependencies unchanged.",
+  "packages": [
+    {
+      "Name": "aiodns",
+      "Version": "4.0.4",
+      "License": "MIT",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "repository": "https://github.com/aio-libs/aiodns.git"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "aiohappyeyeballs",
+      "Version": "2.7.1",
+      "License": null,
+      "LegacyLicense": "PSF-2.0",
+      "Classifiers": "License :: OSI Approved :: Python Software Foundation License",
+      "Source": {
+        "Bug Tracker": "https://github.com/aio-libs/aiohappyeyeballs/issues",
+        "Changelog": "https://github.com/aio-libs/aiohappyeyeballs/blob/main/CHANGELOG.md",
+        "Documentation": "https://aiohappyeyeballs.readthedocs.io",
+        "Repository": "https://github.com/aio-libs/aiohappyeyeballs"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "aiohttp",
+      "Version": "3.14.5",
+      "License": "Apache-2.0 AND MIT",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "CI: GitHub Actions": "https://github.com/aio-libs/aiohttp/actions?query=workflow%3ACI",
+        "Chat: Matrix": "https://matrix.to/#/#aio-libs:matrix.org",
+        "Chat: Matrix Space": "https://matrix.to/#/#aio-libs-space:matrix.org",
+        "Coverage: codecov": "https://codecov.io/github/aio-libs/aiohttp",
+        "Docs: Changelog": "https://docs.aiohttp.org/en/stable/changes.html",
+        "Docs: RTD": "https://docs.aiohttp.org",
+        "GitHub: issues": "https://github.com/aio-libs/aiohttp/issues",
+        "GitHub: repo": "https://github.com/aio-libs/aiohttp",
+        "Homepage": "https://github.com/aio-libs/aiohttp"
+      },
+      "WheelCount": 160
+    },
+    {
+      "Name": "aiosignal",
+      "Version": "1.4.0",
+      "License": null,
+      "LegacyLicense": "Apache 2.0",
+      "Classifiers": "License :: OSI Approved :: Apache Software License",
+      "Source": {
+        "CI: GitHub Actions": "https://github.com/aio-libs/aiosignal/actions",
+        "Chat: Gitter": "https://gitter.im/aio-libs/Lobby",
+        "Coverage: codecov": "https://codecov.io/github/aio-libs/aiosignal",
+        "Docs: RTD": "https://docs.aiosignal.org",
+        "GitHub: issues": "https://github.com/aio-libs/aiosignal/issues",
+        "GitHub: repo": "https://github.com/aio-libs/aiosignal",
+        "Homepage": "https://github.com/aio-libs/aiosignal"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "annotated-doc",
+      "Version": "0.0.5",
+      "License": "MIT",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Changelog": "https://github.com/fastapi/annotated-doc/release-notes.md",
+        "Documentation": "https://github.com/fastapi/annotated-doc",
+        "Homepage": "https://github.com/fastapi/annotated-doc",
+        "Issues": "https://github.com/fastapi/annotated-doc/issues",
+        "Repository": "https://github.com/fastapi/annotated-doc"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "annotated-types",
+      "Version": "0.8.0",
+      "License": "MIT",
+      "LegacyLicense": null,
+      "Classifiers": "License :: OSI Approved :: MIT License",
+      "Source": {
+        "Changelog": "https://github.com/annotated-types/annotated-types/releases",
+        "Homepage": "https://github.com/annotated-types/annotated-types",
+        "Source": "https://github.com/annotated-types/annotated-types"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "anyio",
+      "Version": "4.16.0",
+      "License": "MIT",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Changelog": "https://anyio.readthedocs.io/en/stable/versionhistory.html",
+        "Documentation": "https://anyio.readthedocs.io/en/latest/",
+        "Issue tracker": "https://github.com/agronholm/anyio/issues",
+        "Source code": "https://github.com/agronholm/anyio"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "APScheduler",
+      "Version": "3.11.3",
+      "License": null,
+      "LegacyLicense": "MIT",
+      "Classifiers": "License :: OSI Approved :: MIT License",
+      "Source": {
+        "Changelog": "https://apscheduler.readthedocs.io/en/3.x/versionhistory.html",
+        "Documentation": "https://apscheduler.readthedocs.io/en/3.x/",
+        "Issue tracker": "https://github.com/agronholm/apscheduler/issues",
+        "Source code": "https://github.com/agronholm/apscheduler"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "attrs",
+      "Version": "26.1.0",
+      "License": "MIT",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Changelog": "https://www.attrs.org/en/stable/changelog.html",
+        "Documentation": "https://www.attrs.org/",
+        "Funding": "https://github.com/sponsors/hynek",
+        "GitHub": "https://github.com/python-attrs/attrs",
+        "Tidelift": "https://tidelift.com/subscription/pkg/pypi-attrs?utm_source=pypi-attrs&utm_medium=pypi"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "backports.zstd",
+      "Version": "1.8.0",
+      "License": "PSF-2.0",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Homepage": "https://github.com/rogdham/backports.zstd",
+        "Source": "https://github.com/rogdham/backports.zstd"
+      },
+      "WheelCount": 91
+    },
+    {
+      "Name": "beautifulsoup4",
+      "Version": "4.15.0",
+      "License": null,
+      "LegacyLicense": "MIT License",
+      "Classifiers": "License :: OSI Approved :: MIT License",
+      "Source": {
+        "Download": "https://www.crummy.com/software/BeautifulSoup/bs4/download/",
+        "Homepage": "https://www.crummy.com/software/BeautifulSoup/bs4/"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "bgutil-ytdlp-pot-provider",
+      "Version": "2.0.0",
+      "License": null,
+      "LegacyLicense": null,
+      "Classifiers": "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+      "Source": null,
+      "WheelCount": 1
+    },
+    {
+      "Name": "bilibili-api-python",
+      "Version": "17.4.2",
+      "License": null,
+      "LegacyLicense": "GPL-3.0-or-later",
+      "Classifiers": "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+      "Source": {
+        "Bug Report": "https://github.com/Nemo2011/bilibili-api/issues",
+        "Documentation": "https://nemo2011.github.io/bilibili-api",
+        "Homepage": "https://github.com/Nemo2011/bilibili-api",
+        "Repository": "https://github.com/Nemo2011/bilibili-api"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "biliup",
+      "Version": "1.2.4",
+      "License": null,
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Homepage": "https://github.com/ForgQi/bilibiliupload"
+      },
+      "WheelCount": 28,
+      "VerifiedLicense": "MIT",
+      "LicenseSource": "https://github.com/ForgQi/bilibiliupload/blob/master/LICENSE"
+    },
+    {
+      "Name": "brotli",
+      "Version": "1.2.1",
+      "License": null,
+      "LegacyLicense": "MIT",
+      "Classifiers": null,
+      "Source": {
+        "Homepage": "https://github.com/google/brotli"
+      },
+      "WheelCount": 142
+    },
+    {
+      "Name": "certifi",
+      "Version": "2026.10.23",
+      "License": null,
+      "LegacyLicense": "MPL-2.0",
+      "Classifiers": "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
+      "Source": {
+        "Homepage": "https://github.com/certifi/python-certifi",
+        "Source": "https://github.com/certifi/python-certifi"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "cffi",
+      "Version": "2.1.1",
+      "License": "MIT-0",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Changelog": "https://cffi.readthedocs.io/en/latest/whatsnew.html",
+        "Contact": "https://groups.google.com/forum/#!forum/python-cffi",
+        "Documentation": "https://cffi.readthedocs.io/",
+        "Download": "https://github.com/python-cffi/cffi/releases",
+        "Issue Tracker": "https://github.com/python-cffi/cffi/issues",
+        "Source Code": "https://github.com/python-cffi/cffi"
+      },
+      "WheelCount": 99
+    },
+    {
+      "Name": "charset-normalizer",
+      "Version": "3.5.2",
+      "License": null,
+      "LegacyLicense": "MIT",
+      "Classifiers": null,
+      "Source": {
+        "Changelog": "https://github.com/jawah/charset_normalizer/blob/master/CHANGELOG.md",
+        "Code": "https://github.com/jawah/charset_normalizer",
+        "Documentation": "https://charset-normalizer.readthedocs.io/",
+        "Issue tracker": "https://github.com/jawah/charset_normalizer/issues"
+      },
+      "WheelCount": 171
+    },
+    {
+      "Name": "click",
+      "Version": "8.5.0",
+      "License": "BSD-3-Clause",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Changes": "https://click.palletsprojects.com/page/changes/",
+        "Chat": "https://discord.gg/pallets",
+        "Documentation": "https://click.palletsprojects.com/",
+        "Donate": "https://palletsprojects.com/donate",
+        "Source": "https://github.com/pallets/click/"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "colorama",
+      "Version": "0.4.6",
+      "License": null,
+      "LegacyLicense": "",
+      "Classifiers": "License :: OSI Approved :: BSD License",
+      "Source": {
+        "Homepage": "https://github.com/tartley/colorama"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "fastapi",
+      "Version": "0.141.1",
+      "License": "MIT",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Changelog": "https://fastapi.tiangolo.com/release-notes/",
+        "Documentation": "https://fastapi.tiangolo.com/",
+        "Homepage": "https://github.com/fastapi/fastapi",
+        "Issues": "https://github.com/fastapi/fastapi/issues",
+        "Repository": "https://github.com/fastapi/fastapi"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "frozenlist",
+      "Version": "1.8.0",
+      "License": null,
+      "LegacyLicense": "Apache-2.0",
+      "Classifiers": null,
+      "Source": {
+        "CI: Github Actions": "https://github.com/aio-libs/frozenlist/actions",
+        "Chat: Matrix": "https://matrix.to/#/#aio-libs:matrix.org",
+        "Chat: Matrix Space": "https://matrix.to/#/#aio-libs-space:matrix.org",
+        "Code of Conduct": "https://github.com/aio-libs/.github/blob/master/CODE_OF_CONDUCT.md",
+        "Coverage: codecov": "https://codecov.io/github/aio-libs/frozenlist",
+        "Docs: Changelog": "https://github.com/aio-libs/frozenlist/blob/master/CHANGES.rst#changelog",
+        "Docs: RTD": "https://frozenlist.aio-libs.org",
+        "GitHub: issues": "https://github.com/aio-libs/frozenlist/issues",
+        "GitHub: repo": "https://github.com/aio-libs/frozenlist",
+        "Homepage": "https://github.com/aio-libs/frozenlist"
+      },
+      "WheelCount": 129
+    },
+    {
+      "Name": "h11",
+      "Version": "0.16.0",
+      "License": null,
+      "LegacyLicense": "MIT",
+      "Classifiers": "License :: OSI Approved :: MIT License",
+      "Source": {
+        "Homepage": "https://github.com/python-hyper/h11"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "httpcore",
+      "Version": "1.0.9",
+      "License": "BSD-3-Clause",
+      "LegacyLicense": null,
+      "Classifiers": "License :: OSI Approved :: BSD License",
+      "Source": {
+        "Documentation": "https://www.encode.io/httpcore",
+        "Homepage": "https://www.encode.io/httpcore/",
+        "Source": "https://github.com/encode/httpcore"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "httpx",
+      "Version": "0.28.1",
+      "License": null,
+      "LegacyLicense": "BSD-3-Clause",
+      "Classifiers": "License :: OSI Approved :: BSD License",
+      "Source": {
+        "Changelog": "https://github.com/encode/httpx/blob/master/CHANGELOG.md",
+        "Documentation": "https://www.python-httpx.org",
+        "Homepage": "https://github.com/encode/httpx",
+        "Source": "https://github.com/encode/httpx"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "idna",
+      "Version": "3.20",
+      "License": "BSD-3-Clause",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Changelog": "https://github.com/kjd/idna/blob/master/HISTORY.md",
+        "Issue tracker": "https://github.com/kjd/idna/issues",
+        "Source": "https://github.com/kjd/idna"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "iniconfig",
+      "Version": "2.3.1",
+      "License": "MIT",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Homepage": "https://github.com/pytest-dev/iniconfig"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "isodate",
+      "Version": "0.7.2",
+      "License": null,
+      "LegacyLicense": "Copyright (c) 2021, Hugo van Kemenade and contributors Copyright (c) 2009-2018, Gerhard Weis and contributors Copyright  [Full license retained in package distribution]",
+      "Classifiers": "License :: OSI Approved :: BSD License",
+      "Source": {
+        "Homepage": "https://github.com/gweis/isodate/"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "lxml",
+      "Version": "6.1.3",
+      "License": null,
+      "LegacyLicense": "BSD-3-Clause",
+      "Classifiers": null,
+      "Source": {
+        "Bug Tracker": "https://bugs.launchpad.net/lxml",
+        "Homepage": "https://lxml.de/",
+        "Source": "https://github.com/lxml/lxml"
+      },
+      "WheelCount": 175
+    },
+    {
+      "Name": "multidict",
+      "Version": "7.2.1",
+      "License": "Apache-2.0",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "CI: GitHub": "https://github.com/aio-libs/multidict/actions",
+        "Chat: Matrix": "https://matrix.to/#/#aio-libs:matrix.org",
+        "Chat: Matrix Space": "https://matrix.to/#/#aio-libs-space:matrix.org",
+        "Code of Conduct": "https://github.com/aio-libs/.github/blob/master/CODE_OF_CONDUCT.md",
+        "Coverage: codecov": "https://codecov.io/github/aio-libs/multidict",
+        "Docs: Changelog": "https://multidict.aio-libs.org/en/latest/changes/",
+        "Docs: RTD": "https://multidict.aio-libs.org",
+        "GitHub: issues": "https://github.com/aio-libs/multidict/issues",
+        "GitHub: repo": "https://github.com/aio-libs/multidict",
+        "Homepage": "https://github.com/aio-libs/multidict"
+      },
+      "WheelCount": 150
+    },
+    {
+      "Name": "mutagen",
+      "Version": "1.48.1",
+      "License": "GPL-2.0-or-later",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Homepage": "https://mutagen.readthedocs.io",
+        "Repository": "https://github.com/quodlibet/mutagen"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "outcome",
+      "Version": "1.3.0.post0",
+      "License": null,
+      "LegacyLicense": "MIT OR Apache-2.0",
+      "Classifiers": [
+        "License :: OSI Approved :: Apache Software License",
+        "License :: OSI Approved :: MIT License"
+      ],
+      "Source": {
+        "Changelog": "https://outcome.readthedocs.io/en/latest/history.html",
+        "Chat": "https://gitter.im/python-trio/general",
+        "Documentation": "https://outcome.readthedocs.io/en/latest/",
+        "Homepage": "https://github.com/python-trio/outcome"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "packaging",
+      "Version": "26.3",
+      "License": "Apache-2.0 OR BSD-2-Clause",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Documentation": "https://packaging.pypa.io/",
+        "Source": "https://github.com/pypa/packaging"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "pillow",
+      "Version": "13.0.0",
+      "License": "MIT-CMU",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Changelog": "https://github.com/python-pillow/Pillow/releases",
+        "Documentation": "https://pillow.readthedocs.io",
+        "Funding": "https://tidelift.com/lifter/search/pypi/pillow",
+        "Homepage": "https://python-pillow.org",
+        "Mastodon": "https://fosstodon.org/@pillow",
+        "Release notes": "https://pillow.readthedocs.io/en/stable/releasenotes/index.html",
+        "Security": "https://pillow.readthedocs.io/en/stable/handbook/security.html",
+        "Source": "https://github.com/python-pillow/Pillow"
+      },
+      "WheelCount": 82
+    },
+    {
+      "Name": "pluggy",
+      "Version": "1.7.0",
+      "License": null,
+      "LegacyLicense": "MIT",
+      "Classifiers": "License :: OSI Approved :: MIT License",
+      "Source": {
+        "Changelog": "https://pluggy.readthedocs.io/en/latest/changelog.html",
+        "Documentation": "https://pluggy.readthedocs.io/",
+        "Funding": "https://tidelift.com/subscription/pkg/pypi-pluggy",
+        "Homepage": "https://github.com/pytest-dev/pluggy",
+        "Issues": "https://github.com/pytest-dev/pluggy/issues",
+        "Repository": "https://github.com/pytest-dev/pluggy"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "propcache",
+      "Version": "0.5.4",
+      "License": null,
+      "LegacyLicense": "Apache-2.0",
+      "Classifiers": null,
+      "Source": {
+        "CI: GitHub Workflows": "https://github.com/aio-libs/propcache/actions?query=branch:master",
+        "Chat: Matrix": "https://matrix.to/#/#aio-libs:matrix.org",
+        "Chat: Matrix Space": "https://matrix.to/#/#aio-libs-space:matrix.org",
+        "Code of Conduct": "https://github.com/aio-libs/.github/blob/master/CODE_OF_CONDUCT.md",
+        "Coverage: codecov": "https://codecov.io/github/aio-libs/propcache",
+        "Docs: Changelog": "https://propcache.readthedocs.io/en/latest/changes/",
+        "Docs: RTD": "https://propcache.readthedocs.io",
+        "GitHub: issues": "https://github.com/aio-libs/propcache/issues",
+        "GitHub: repo": "https://github.com/aio-libs/propcache",
+        "Homepage": "https://github.com/aio-libs/propcache"
+      },
+      "WheelCount": 137
+    },
+    {
+      "Name": "pyasn1",
+      "Version": "0.6.5",
+      "License": null,
+      "LegacyLicense": "BSD-2-Clause",
+      "Classifiers": null,
+      "Source": {
+        "Changelog": "https://pyasn1.readthedocs.io/en/latest/changelog.html",
+        "Documentation": "https://pyasn1.readthedocs.io",
+        "Homepage": "https://github.com/pyasn1/pyasn1",
+        "Issues": "https://github.com/pyasn1/pyasn1/issues",
+        "Source": "https://github.com/pyasn1/pyasn1"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "pycares",
+      "Version": "5.2.1",
+      "License": "MIT",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Homepage": "http://github.com/saghul/pycares"
+      },
+      "WheelCount": 98
+    },
+    {
+      "Name": "pycountry",
+      "Version": "26.2.16",
+      "License": "LGPL-2.1-only",
+      "LegacyLicense": null,
+      "Classifiers": "License :: OSI Approved :: GNU Lesser General Public License v2 (LGPLv2)",
+      "Source": {
+        "changelog": "https://github.com/pycountry/pycountry/blob/main/HISTORY.txt",
+        "issues": "https://github.com/pycountry/pycountry/issues",
+        "source": "https://github.com/pycountry/pycountry"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "pycparser",
+      "Version": "3.12",
+      "License": "BSD-3-Clause",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Homepage": "https://github.com/eliben/pycparser"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "pycryptodome",
+      "Version": "4.2.0",
+      "License": "BSD-2-Clause AND Unlicense AND MIT",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Changelog": "https://www.pycryptodome.org/src/changelog",
+        "Homepage": "https://www.pycryptodome.org",
+        "Source": "https://github.com/Legrandin/pycryptodome/"
+      },
+      "WheelCount": 26
+    },
+    {
+      "Name": "pycryptodomex",
+      "Version": "3.24.1",
+      "License": null,
+      "LegacyLicense": "BSD, Public Domain",
+      "Classifiers": [
+        "License :: OSI Approved :: BSD License",
+        "License :: Public Domain"
+      ],
+      "Source": {
+        "Changelog": "https://www.pycryptodome.org/src/changelog",
+        "Homepage": "https://www.pycryptodome.org",
+        "Source": "https://github.com/Legrandin/pycryptodome/"
+      },
+      "WheelCount": 42
+    },
+    {
+      "Name": "pydantic",
+      "Version": "2.14.2",
+      "License": "MIT",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Changelog": "https://pydantic.dev/docs/validation/latest/get-started/changelog/",
+        "Documentation": "https://pydantic.dev/docs/validation/latest/get-started/",
+        "Funding": "https://github.com/sponsors/samuelcolvin",
+        "Homepage": "https://github.com/pydantic/pydantic",
+        "Source": "https://github.com/pydantic/pydantic"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "pydantic-settings",
+      "Version": "2.15.0",
+      "License": "MIT",
+      "LegacyLicense": null,
+      "Classifiers": "License :: OSI Approved :: MIT License",
+      "Source": {
+        "Changelog": "https://github.com/pydantic/pydantic-settings/releases",
+        "Documentation": "https://docs.pydantic.dev/dev-v2/concepts/pydantic_settings/",
+        "Funding": "https://github.com/sponsors/samuelcolvin",
+        "Homepage": "https://github.com/pydantic/pydantic-settings",
+        "Source": "https://github.com/pydantic/pydantic-settings"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "pydantic_core",
+      "Version": "2.50.2",
+      "License": "MIT",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Funding": "https://github.com/sponsors/samuelcolvin",
+        "Homepage": "https://github.com/pydantic",
+        "Source": "https://github.com/pydantic/pydantic/tree/main/pydantic-core"
+      },
+      "WheelCount": 140
+    },
+    {
+      "Name": "Pygments",
+      "Version": "2.21.0",
+      "License": "BSD-2-Clause",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Bug Tracker": "https://github.com/pygments/pygments/issues",
+        "Changelog": "https://github.com/pygments/pygments/blob/master/CHANGES",
+        "Documentation": "https://pygments.org/docs",
+        "Homepage": "https://pygments.org",
+        "Source": "https://github.com/pygments/pygments"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "PyJWT",
+      "Version": "2.15.1",
+      "License": "MIT",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Homepage": "https://github.com/jpadilla/pyjwt"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "PySocks",
+      "Version": "1.7.1",
+      "License": null,
+      "LegacyLicense": "BSD",
+      "Classifiers": null,
+      "Source": {
+        "Homepage": "https://github.com/Anorov/PySocks"
+      },
+      "WheelCount": 2
+    },
+    {
+      "Name": "pytest",
+      "Version": "9.2.0",
+      "License": "MIT",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Changelog": "https://docs.pytest.org/en/stable/changelog.html",
+        "Contact": "https://docs.pytest.org/en/stable/contact.html",
+        "Funding": "https://docs.pytest.org/en/stable/sponsor.html",
+        "Homepage": "https://docs.pytest.org/en/latest/",
+        "Source": "https://github.com/pytest-dev/pytest",
+        "Tracker": "https://github.com/pytest-dev/pytest/issues"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "python-dotenv",
+      "Version": "1.2.4",
+      "License": null,
+      "LegacyLicense": "BSD-3-Clause",
+      "Classifiers": null,
+      "Source": {
+        "Source": "https://github.com/theskumar/python-dotenv"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "python-multipart",
+      "Version": "0.0.32",
+      "License": "Apache-2.0",
+      "LegacyLicense": null,
+      "Classifiers": "License :: OSI Approved :: Apache Software License",
+      "Source": {
+        "Changelog": "https://github.com/Kludex/python-multipart/blob/master/CHANGELOG.md",
+        "Documentation": "https://kludex.github.io/python-multipart/",
+        "Homepage": "https://github.com/Kludex/python-multipart",
+        "Source": "https://github.com/Kludex/python-multipart"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "PyYAML",
+      "Version": "6.0.3",
+      "License": null,
+      "LegacyLicense": "MIT",
+      "Classifiers": "License :: OSI Approved :: MIT License",
+      "Source": {
+        "Bug Tracker": "https://github.com/yaml/pyyaml/issues",
+        "CI": "https://github.com/yaml/pyyaml/actions",
+        "Documentation": "https://pyyaml.org/wiki/PyYAMLDocumentation",
+        "Download": "https://pypi.org/project/PyYAML/",
+        "Homepage": "https://pyyaml.org/",
+        "Mailing lists": "http://lists.sourceforge.net/lists/listinfo/yaml-core",
+        "Source Code": "https://github.com/yaml/pyyaml"
+      },
+      "WheelCount": 72
+    },
+    {
+      "Name": "qrcode",
+      "Version": "8.2",
+      "License": null,
+      "LegacyLicense": "BSD",
+      "Classifiers": [
+        "License :: OSI Approved :: BSD License",
+        "License :: Other/Proprietary License"
+      ],
+      "Source": {
+        "Homepage": "https://github.com/lincolnloop/python-qrcode"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "qrcode_terminal",
+      "Version": "0.8",
+      "License": null,
+      "LegacyLicense": "MIT",
+      "Classifiers": null,
+      "Source": {
+        "Homepage": "https://github.com/alishtory/qrcode-terminal"
+      },
+      "WheelCount": 0
+    },
+    {
+      "Name": "requests",
+      "Version": "2.34.2",
+      "License": null,
+      "LegacyLicense": "Apache-2.0",
+      "Classifiers": "License :: OSI Approved :: Apache Software License",
+      "Source": {
+        "Documentation": "https://requests.readthedocs.io",
+        "Source": "https://github.com/psf/requests"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "rsa",
+      "Version": "4.9.1",
+      "License": null,
+      "LegacyLicense": "Apache-2.0",
+      "Classifiers": "License :: OSI Approved :: Apache Software License",
+      "Source": {
+        "Homepage": "https://stuvel.eu/rsa",
+        "Repository": "https://github.com/sybrenstuvel/python-rsa"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "sniffio",
+      "Version": "1.3.1",
+      "License": null,
+      "LegacyLicense": "MIT OR Apache-2.0",
+      "Classifiers": [
+        "License :: OSI Approved :: Apache Software License",
+        "License :: OSI Approved :: MIT License"
+      ],
+      "Source": {
+        "Changelog": "https://sniffio.readthedocs.io/en/latest/history.html",
+        "Documentation": "https://sniffio.readthedocs.io/",
+        "Homepage": "https://github.com/python-trio/sniffio"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "sortedcontainers",
+      "Version": "2.4.0",
+      "License": null,
+      "LegacyLicense": "Apache 2.0",
+      "Classifiers": "License :: OSI Approved :: Apache Software License",
+      "Source": {
+        "Homepage": "http://www.grantjenks.com/docs/sortedcontainers/"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "soupsieve",
+      "Version": "3.0.4",
+      "License": "MIT",
+      "LegacyLicense": null,
+      "Classifiers": "License :: OSI Approved :: MIT License",
+      "Source": {
+        "Homepage": "https://github.com/facelessuser/soupsieve"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "srt",
+      "Version": "3.5.3",
+      "License": null,
+      "LegacyLicense": "MIT",
+      "Classifiers": "License :: OSI Approved :: MIT License",
+      "Source": {
+        "Homepage": "https://github.com/cdown/srt"
+      },
+      "WheelCount": 0
+    },
+    {
+      "Name": "starlette",
+      "Version": "1.10.0",
+      "License": "BSD-3-Clause",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Changelog": "https://starlette.dev/release-notes/",
+        "Documentation": "https://starlette.dev/",
+        "Funding": "https://github.com/sponsors/Kludex",
+        "Homepage": "https://github.com/Kludex/starlette",
+        "Source": "https://github.com/Kludex/starlette"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "streamlink",
+      "Version": "8.6.3",
+      "License": "BSD-2-Clause",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Documentation": "https://streamlink.github.io/",
+        "Funding": "https://streamlink.github.io/latest/support.html",
+        "Homepage": "https://github.com/streamlink/streamlink",
+        "Source": "https://github.com/streamlink/streamlink",
+        "Tracker": "https://github.com/streamlink/streamlink/issues"
+      },
+      "WheelCount": 3
+    },
+    {
+      "Name": "trio",
+      "Version": "0.35.0",
+      "License": "MIT OR Apache-2.0",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Changelog": "https://trio.readthedocs.io/en/latest/history.html",
+        "Documentation": "https://trio.readthedocs.io/",
+        "Homepage": "https://github.com/python-trio/trio"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "trio-websocket",
+      "Version": "0.12.2",
+      "License": null,
+      "LegacyLicense": null,
+      "Classifiers": "License :: OSI Approved :: MIT License",
+      "Source": {
+        "Bug Reports": "https://github.com/python-trio/trio-websocket/issues",
+        "Homepage": "https://github.com/python-trio/trio-websocket",
+        "Source": "https://github.com/python-trio/trio-websocket"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "typing-extensions",
+      "Version": "4.16.0",
+      "License": "PSF-2.0",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Bug Tracker": "https://github.com/python/typing_extensions/issues",
+        "Changes": "https://github.com/python/typing_extensions/blob/main/CHANGELOG.md",
+        "Documentation": "https://typing-extensions.readthedocs.io/",
+        "Home": "https://github.com/python/typing_extensions",
+        "Q & A": "https://github.com/python/typing/discussions",
+        "Repository": "https://github.com/python/typing_extensions"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "typing-inspection",
+      "Version": "0.4.4",
+      "License": "MIT",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Changelog": "https://github.com/pydantic/typing-inspection/blob/main/HISTORY.md",
+        "Documentation": "https://pydantic.github.io/typing-inspection/dev/",
+        "Homepage": "https://github.com/pydantic/typing-inspection",
+        "Source": "https://github.com/pydantic/typing-inspection"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "tzdata",
+      "Version": "2026.6",
+      "License": null,
+      "LegacyLicense": "Apache-2.0",
+      "Classifiers": null,
+      "Source": {
+        "Bug Reports": "https://github.com/python/tzdata/issues",
+        "Documentation": "https://tzdata.python.org",
+        "Homepage": "https://github.com/python/tzdata",
+        "Source": "https://github.com/python/tzdata"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "tzlocal",
+      "Version": "5.4.5",
+      "License": "MIT",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Changelog": "https://github.com/regebro/tzlocal/blob/master/CHANGES.txt",
+        "Issue tracker": "https://github.com/regebro/tzlocal/issues",
+        "Source code": "https://github.com/regebro/tzlocal"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "urllib3",
+      "Version": "2.8.0",
+      "License": "MIT",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Changelog": "https://github.com/urllib3/urllib3/blob/main/CHANGES.rst",
+        "Code": "https://github.com/urllib3/urllib3",
+        "Documentation": "https://urllib3.readthedocs.io",
+        "Issue tracker": "https://github.com/urllib3/urllib3/issues",
+        "Security policy": "https://urllib3.readthedocs.io/en/latest/security.html"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "uvicorn",
+      "Version": "0.52.4",
+      "License": "BSD-3-Clause",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Changelog": "https://uvicorn.dev/release-notes",
+        "Funding": "https://github.com/sponsors/encode",
+        "Homepage": "https://uvicorn.dev/",
+        "Source": "https://github.com/Kludex/uvicorn"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "websocket-client",
+      "Version": "1.9.2",
+      "License": null,
+      "LegacyLicense": "Apache-2.0",
+      "Classifiers": null,
+      "Source": {
+        "Documentation": "https://websocket-client.readthedocs.io/",
+        "Download": "https://github.com/websocket-client/websocket-client/releases",
+        "Homepage": "https://github.com/websocket-client/websocket-client",
+        "Source": "https://github.com/websocket-client/websocket-client/"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "websockets",
+      "Version": "17.4",
+      "License": "BSD-3-Clause",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Changelog": "https://websockets.readthedocs.io/en/stable/project/changelog.html",
+        "Documentation": "https://websockets.readthedocs.io/",
+        "Funding": "https://tidelift.com/subscription/pkg/pypi-websockets?utm_source=pypi-websockets&utm_medium=referral&utm_campaign=readme",
+        "Homepage": "https://github.com/python-websockets/websockets",
+        "Tracker": "https://github.com/python-websockets/websockets/issues"
+      },
+      "WheelCount": 153
+    },
+    {
+      "Name": "wsproto",
+      "Version": "1.3.2",
+      "License": "MIT",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Bug Reports": "https://github.com/python-hyper/wsproto/issues",
+        "Documentation": "https://python-hyper.org/",
+        "Homepage": "https://github.com/python-hyper/wsproto/",
+        "Source": "https://github.com/python-hyper/wsproto/"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "yarl",
+      "Version": "1.25.1",
+      "License": null,
+      "LegacyLicense": "Apache-2.0",
+      "Classifiers": null,
+      "Source": {
+        "CI: GitHub Workflows": "https://github.com/aio-libs/yarl/actions?query=branch:master",
+        "Chat: Matrix": "https://matrix.to/#/#aio-libs:matrix.org",
+        "Chat: Matrix Space": "https://matrix.to/#/#aio-libs-space:matrix.org",
+        "Code of Conduct": "https://github.com/aio-libs/.github/blob/master/CODE_OF_CONDUCT.md",
+        "Coverage: codecov": "https://codecov.io/github/aio-libs/yarl",
+        "Docs: Changelog": "https://yarl.aio-libs.org/en/latest/changes/",
+        "Docs: RTD": "https://yarl.aio-libs.org",
+        "GitHub: issues": "https://github.com/aio-libs/yarl/issues",
+        "GitHub: repo": "https://github.com/aio-libs/yarl",
+        "Homepage": "https://github.com/aio-libs/yarl"
+      },
+      "WheelCount": 137
+    },
+    {
+      "Name": "yt-dlp",
+      "Version": "2026.8.19",
+      "License": "Unlicense",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Documentation": "https://github.com/yt-dlp/yt-dlp#readme",
+        "Funding": "https://github.com/yt-dlp/yt-dlp/blob/master/Maintainers.md#maintainers",
+        "Repository": "https://github.com/yt-dlp/yt-dlp",
+        "Tracker": "https://github.com/yt-dlp/yt-dlp/issues"
+      },
+      "WheelCount": 1
+    },
+    {
+      "Name": "yt-dlp-ejs",
+      "Version": "0.8.0",
+      "License": "Unlicense AND MIT AND ISC",
+      "LegacyLicense": null,
+      "Classifiers": null,
+      "Source": {
+        "Documentation": "https://github.com/yt-dlp/ejs#readme",
+        "Issues": "https://github.com/yt-dlp/ejs/issues",
+        "Source": "https://github.com/yt-dlp/ejs"
+      },
+      "WheelCount": 1
+    }
+  ]
+}

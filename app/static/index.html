@@ -3,9 +3,16 @@
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark"><title>Tube2Bili</title>
-  <link rel="stylesheet" href="/static/style.css"><script src="/static/app.js" defer></script>
+  <link rel="stylesheet" href="/static/style.css?v=0.2.0-rc.42"><script src="/static/app.js?v=0.2.0-rc.42" defer></script>
 </head>
 <body>
+  <div id="startup" class="login">
+    <div class="login-box">
+      <h1 id="startup-title">正在连接工作台…</h1>
+      <p id="startup-message" role="status"></p>
+      <button id="startup-retry" class="btn btn-dark" data-action="retry-connect" hidden>重新连接</button>
+    </div>
+  </div>
   <div id="login" class="login" hidden>
     <form id="login-form" class="login-box">
       <div class="brand"><span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7l5 5-5 5" stroke="#fff"/><path d="M13 17h6" class="mark-accent"/></svg></span><strong>Tube2Bili</strong></div>
