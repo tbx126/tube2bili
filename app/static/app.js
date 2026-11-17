@@ -34,10 +34,24 @@ const inGroup = (g, s) => !groups[g] || groups[g].includes(s);
 const canResume = t => !['running','completed','reconcile'].includes(t.status) && !(t.assets_deleted || t.payload?.assets_deleted);
 
 async function api(path, method='GET', data) {
-  const response = await fetch('/api'+path, {method, headers:{'Content-Type':'application/json','X-Requested-With':'Tube2Bili'}, body:data===undefined?undefined:JSON.stringify(data)});
-  if (response.status === 401 && path !== '/login') { $('#shell').hidden = true; $('#login').hidden = false; }
-  const value = await response.json();
-  if (!response.ok) throw new Error(value.detail || '请求失败');
+  let response;
+  try {
+    response = await fetch('/api'+path, {method, headers:{'Content-Type':'application/json','X-Requested-With':'Tube2Bili'}, body:data===undefined?undefined:JSON.stringify(data)});
+  } catch {
+    throw new Error('无法连接 Tube2Bili，请检查网络后重试');
+  }
+  const value = await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = new Error(value?.detail || `服务请求失败（HTTP ${response.status}）`);
+    error.loginRequired = response.status === 401 && value?.detail === '请先登录';
+    if (error.loginRequired && path !== '/login') {
+      $('#shell').hidden = true;
+      $('#startup').hidden = true;
+      $('#login').hidden = false;
+    }
+    throw error;
+  }
+  if (value === null) throw new Error('服务器未返回工作台数据，请检查访问入口');
   return value;
 }
 function toast(message) { clearTimeout(toastTimer); $('#toast').textContent = message; $('#toast').hidden = false; toastTimer = setTimeout(() => $('#toast').hidden = true, 5000); }
@@ -346,6 +360,7 @@ document.addEventListener('click', async e => {
   const {action, id} = button.dataset;
   try {
     if (action === 'close') { $('#modal').close(); return; }
+    if (action === 'retry-connect') { await init(); return; }
     if (action === 'add') { if (!settingsData) await loadSettings(); addModal(); return; }
     if (action === 'filter') { filter = button.dataset.filter; drawTaskList(); return; }
     if (action === 'edit-channel') { channelModal(channelData.find(c => c.id === id)); return; }
@@ -405,7 +420,7 @@ document.addEventListener('submit', async e => {
       await refresh();
       await loadDetail();
     }
-    if (form.id === 'login-form') { await api('/login', 'POST', {password: data.get('password')}); form.reset(); $('#login-error').textContent = ''; $('#login').hidden = true; $('#shell').hidden = false; await Promise.all([refresh(false), loadSettings()]); await navigate(); }
+    if (form.id === 'login-form') { await api('/login', 'POST', {password: data.get('password')}); form.reset(); $('#login-error').textContent = ''; await init(); }
     if (form.id === 'add-form') {
       const url = data.get('url').trim();
       if (!url) throw new Error('请先粘贴链接');
@@ -444,8 +459,25 @@ document.addEventListener('change', e => { if (e.target.closest('#settings-form'
 window.addEventListener('beforeunload', e => { if (page === 'settings' && settingsDirty) e.preventDefault(); });
 window.addEventListener('hashchange', () => navigate().catch(e => toast(e.message)));
 async function init() {
-  try { await Promise.all([refresh(false), loadSettings()]); $('#shell').hidden = false; await navigate(); }
-  catch { $('#login').hidden = false; }
+  $('#login').hidden = true;
+  $('#startup').hidden = false;
+  $('#startup-title').textContent = '正在连接工作台…';
+  $('#startup-message').textContent = '';
+  $('#startup-retry').hidden = true;
+  try {
+    await refresh(false);
+    await loadSettings();
+    await navigate();
+    $('#startup').hidden = true;
+    $('#shell').hidden = false;
+  } catch (error) {
+    $('#shell').hidden = true;
+    $('#login').hidden = !error.loginRequired;
+    $('#startup').hidden = Boolean(error.loginRequired);
+    $('#startup-title').textContent = '无法打开工作台';
+    $('#startup-message').textContent = error.message;
+    $('#startup-retry').hidden = false;
+  }
 }
 setInterval(() => { if (!$('#shell').hidden && !document.hidden) refresh().catch(() => { $('#connection').innerHTML = '<i class="dot fail"></i><span>连接中断 · 正在重连</span>'; }); }, 8000);
 init();
