@@ -11,20 +11,24 @@ const maxBytes = 512 * 1024 ** 2;
 const provider = 'https://9xbuddy.in';
 let busy = false;
 
+class DownloadError extends Error {}
+
 async function download(id, dir, signal) {
   const browser = spawn('chromium-headless-shell', [
     '--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+    '--disable-breakpad', '--disable-crash-reporter',
     '--remote-debugging-pipe', '--user-data-dir=' + join(dir, 'profile'),
     ...(process.env.NINEBUDDY_PROXY ? ['--proxy-server=' + process.env.NINEBUDDY_PROXY] : []),
     'about:blank',
-  ], { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'], signal });
+  ], { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'], detached: true, signal });
+  const closed = new Promise(resolve => browser.once('close', resolve));
   let sequence = 0;
   let chunk = '';
   let completed;
   let rejected = false;
   const pending = new Map();
   const abort = () => {
-    for (const callback of pending.values()) callback.reject(new Error('Browser stopped'));
+    for (const callback of pending.values()) callback.reject(new DownloadError('browser'));
     pending.clear();
   };
   browser.on('error', abort);
@@ -55,7 +59,7 @@ async function download(id, dir, signal) {
   });
   const call = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
     if (signal.aborted || browser.exitCode !== null || !browser.stdio[3].writable) {
-      reject(new Error('Browser unavailable'));
+      reject(new DownloadError('browser'));
       return;
     }
     const id = ++sequence;
@@ -68,14 +72,14 @@ async function download(id, dir, signal) {
     const evaluate = async fn => (await call('Runtime.evaluate', {
       expression: '(' + fn.toString() + ')()', returnByValue: true, userGesture: true,
     }, sessionId)).result?.value;
-    async function waitFor(fn, seconds) {
+    async function waitFor(fn, seconds, failure) {
       const end = Date.now() + seconds * 1000;
       while (Date.now() < end) {
         const value = await evaluate(fn);
         if (value) return value;
         await delay(750, undefined, { signal });
       }
-      throw new Error('Page did not expose the expected download control');
+      throw new DownloadError(failure);
     }
 
     await call('Browser.setDownloadBehavior', {
@@ -84,35 +88,46 @@ async function download(id, dir, signal) {
     const url = provider + '/process?url=' + encodeURIComponent('https://www.youtube.com/watch?v=' + id);
     await call('Page.navigate', { url }, sessionId);
     const result = await waitFor(() => {
-      if (location.origin !== 'https://9xbuddy.in' || location.pathname !== '/process') return;
+      if (location.origin !== 'https://9xbuddy.in' || !/^\/(?:[a-z-]+\/)?process$/.test(location.pathname)) return;
       const title = document.querySelector('h1')?.textContent?.trim();
       const links = [...document.querySelectorAll('a[href]')].filter(link =>
-        link.origin === location.origin && link.pathname.startsWith('/download/'));
+        link.origin === location.origin && /^\/(?:[a-z-]+\/)?download\//.test(link.pathname));
       const link = [480, 360, 240, 144].map(height => links.find(a =>
         new URL(a.href).searchParams.get('customName')?.endsWith('_' + height + 'p'))).find(Boolean);
       if (!link || !title) return;
       const uploader = document.body.innerText.match(/(?:Uploader|Uploaded by|上传者)\s*:?\s*([^\n/]+)/i)?.[1]?.trim();
       return { url: link.href, title, uploader };
-    }, 35);
+    }, 35, 'formats');
     const prepare = new URL(result.url);
-    if (!prepare.pathname.startsWith('/download/' + id + '-')) throw new Error('Unexpected video');
+    if (!prepare.pathname.split('/download/')[1]?.startsWith(id + '-')) {
+      throw new DownloadError('formats');
+    }
     await call('Page.navigate', { url: prepare.href }, sessionId);
     await waitFor(() => {
-      if (location.origin !== 'https://9xbuddy.in' || !location.pathname.startsWith('/download/')) return;
+      if (location.origin !== 'https://9xbuddy.in' || !/^\/(?:[a-z-]+\/)?download\//.test(location.pathname)) return;
       const link = [...document.querySelectorAll('a[href]')].find(a =>
         a.protocol === 'https:' && a.hostname.endsWith('.9xbud.com') && a.pathname.startsWith('/down/'));
       if (!link) return;
       link.click();
       return true;
-    }, 105);
+    }, 105, 'prepare');
     while (!completed && !rejected) await delay(500, undefined, { signal });
-    if (rejected || !/^[a-f0-9-]{36}$/i.test(completed)) throw new Error('Download rejected');
+    if (rejected || !/^[a-f0-9-]{36}$/i.test(completed)) throw new DownloadError('transfer');
     const file = join(dir, completed);
     const size = (await stat(file)).size;
-    if (!size || size > maxBytes) throw new Error('Invalid media size');
+    if (!size || size > maxBytes) throw new DownloadError('transfer');
     return { file, size, title: result.title, uploader: result.uploader };
   } finally {
-    browser.kill();
+    // Chromium forks renderers and zygotes. Killing only the launcher leaves
+    // its descendants alive and exhausts the container's PID budget.
+    if (browser.pid) {
+      try {
+        process.kill(-browser.pid, 'SIGKILL');
+      } catch (error) {
+        if (error.code !== 'ESRCH') throw error;
+      }
+    }
+    await closed;
     abort();
   }
 }
@@ -150,8 +165,11 @@ createServer(async (req, res) => {
       'x-video-uploader': encodeURIComponent((result.uploader || '').slice(0, 300)),
     });
     await pipeline(createReadStream(result.file), res);
-  } catch {
-    if (!res.headersSent && !res.destroyed) res.writeHead(502).end();
+  } catch (error) {
+    const reason = error instanceof DownloadError ? error.message
+      : error.name === 'AbortError' || error.name === 'TimeoutError' ? 'timeout' : 'service';
+    console.warn('9xbuddy failure:', reason);
+    if (!res.headersSent && !res.destroyed) res.writeHead(502, {'x-ninebuddy-error': reason}).end();
     else if (!res.destroyed) res.destroy();
   } finally {
     try {

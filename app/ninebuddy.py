@@ -13,6 +13,15 @@ from fastapi import HTTPException
 from . import store
 from .media import check
 
+FAILURES = {
+    'browser': '浏览器启动或运行失败',
+    'formats': '未找到可准备的 MP4 格式',
+    'prepare': '网页未能准备下载文件',
+    'transfer': '文件传输中断或超过大小限制',
+    'timeout': '服务处理超时',
+    'service': '服务执行出错',
+}
+
 
 def acquire(task, settings, folder):
     endpoint = os.getenv('NINEBUDDY_URL')
@@ -65,8 +74,19 @@ def acquire(task, settings, folder):
             except OSError:
                 (folder / 'source.mp4').replace(video)
                 raise
-    except (httpx.HTTPError, HTTPException, OSError, ValueError):
-        store.event(task['id'], '9xbuddy 未返回可用的带声 MP4，改用 yt-dlp')
+    except (httpx.HTTPError, HTTPException, OSError, ValueError) as error:
+        if isinstance(error, httpx.HTTPStatusError):
+            detail = FAILURES.get(error.response.headers.get('x-ninebuddy-error'),
+                                  f'HTTP {error.response.status_code}')
+        elif isinstance(error, httpx.TimeoutException):
+            detail = '连接或读取超时'
+        elif isinstance(error, HTTPException):
+            detail = '文件未通过音视频校验'
+        elif isinstance(error, httpx.HTTPError):
+            detail = '连接或传输失败'
+        else:
+            detail = '响应不完整、格式无效或磁盘不可写'
+        store.event(task['id'], f'9xbuddy {detail}，改用 yt-dlp')
         return None
     store.event(task['id'], '9xbuddy 视频下载完成，使用原声生成字幕')
     return source
